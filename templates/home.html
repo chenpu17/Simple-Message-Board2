@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>简易留言板</title>
+    <script>
+        (function() {
+            try {
+                const storedTheme = localStorage.getItem('theme');
+                if (storedTheme === 'dark') {
+                    document.documentElement.classList.add('dark');
+                } else if (storedTheme === 'light') {
+                } else {
+                    document.documentElement.classList.add('dark', 'cyberpunk');
+                }
+            } catch (error) {
+                document.documentElement.classList.add('dark', 'cyberpunk');
+            }
+        })();
+    </script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        border: 'hsl(var(--border))',
+                        input: 'hsl(var(--input))',
+                        ring: 'hsl(var(--ring))',
+                        background: 'hsl(var(--background))',
+                        foreground: 'hsl(var(--foreground))',
+                        primary: { DEFAULT: 'hsl(var(--primary))', foreground: 'hsl(var(--primary-foreground))' },
+                        secondary: { DEFAULT: 'hsl(var(--secondary))', foreground: 'hsl(var(--secondary-foreground))' },
+                        destructive: { DEFAULT: 'hsl(var(--destructive))', foreground: 'hsl(var(--destructive-foreground))' },
+                        muted: { DEFAULT: 'hsl(var(--muted))', foreground: 'hsl(var(--muted-foreground))' },
+                        accent: { DEFAULT: 'hsl(var(--accent))', foreground: 'hsl(var(--accent-foreground))' },
+                        card: { DEFAULT: 'hsl(var(--card))', foreground: 'hsl(var(--card-foreground))' }
+                    },
+                    borderRadius: { lg: 'var(--radius)', md: 'calc(var(--radius) - 2px)', sm: 'calc(var(--radius) - 4px)' },
+                    fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'], mono: ['JetBrains Mono', 'monospace'] }
+                }
+            }
+        };
+    </script>
+    <link rel="preconnect" href="https://fonts.bunny.net">
+    <link href="https://fonts.bunny.net/css?family=inter:400,500,600|jetbrains-mono:400,500" rel="stylesheet" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" referrerpolicy="no-referrer" />
+    <link rel="stylesheet" href="/static/themes/theme-cyberpunk.css" id="theme-stylesheet">
+    <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="min-h-screen bg-background text-foreground" data-search-term="{{ search_term }}" data-page-size="{{ page_size }}" data-tag-filter="{{ tag_filter }}">
+    {% if !all_tags.is_empty() %}
+    <aside class="fixed left-0 top-24 z-10 w-40 hidden xl:block pl-6">
+        <div class="rounded-xl border border-border bg-card/50 shadow-sm backdrop-blur-sm">
+            <div class="border-b border-border/50 px-3 py-2.5">
+                <div class="flex items-center justify-between">
+                    <h2 class="flex items-center gap-1.5 text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2H2v10l9.29 9.29c.94.94 2.48.94 3.42 0l6.58-6.58c.94-.94.94-2.48 0-3.42L12 2Z"/><path d="M7 7h.01"/></svg>
+                        标签
+                    </h2>
+                    {% if !tag_filter.is_empty() %}<a href="/" class="text-[10px] text-muted-foreground hover:text-primary transition-colors">清除</a>{% endif %}
+                </div>
+            </div>
+            <div class="max-h-[calc(100vh-10rem)] overflow-y-auto p-2 scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent">
+                {% for tag in all_tags %}
+                <a href="/?tag={{ tag.id }}" class="group flex items-center justify-between gap-2 py-2 px-2.5 text-xs transition-all rounded-md mb-1 {% if tag.id|fmt == tag_filter %}font-medium shadow-sm ring-1 ring-inset{% else %}text-muted-foreground hover:bg-muted/60 hover:text-foreground{% endif %}" style="{% if tag.id|fmt == tag_filter %}background-color: {{ tag.color }}15; color: {{ tag.color }}; --tw-ring-color: {{ tag.color }}40;{% endif %}" title="{{ tag.name }}">
+                    <span class="flex items-center gap-2 min-w-0 flex-1">
+                        <span class="inline-block h-1.5 w-1.5 rounded-full flex-shrink-0 shadow-sm" style="background-color: {{ tag.color }};"></span>
+                        <span class="truncate relative top-[0.5px]">{{ tag.name }}</span>
+                    </span>
+                    <span class="flex-shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-bold transition-colors group-hover:bg-background/80" style="background-color: {% if tag.id|fmt == tag_filter %}{{ tag.color }}{% else %}var(--muted){% endif %}; color: {% if tag.id|fmt == tag_filter %}white{% else %}var(--muted-foreground){% endif %};">{{ tag.message_count }}</span>
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+    </aside>
+    {% endif %}
+
+    <div class="relative isolate">
+        <div class="pointer-events-none absolute inset-x-0 top-[-14rem] -z-10 transform-gpu overflow-hidden blur-3xl" aria-hidden="true">
+            <div class="relative left-1/2 aspect-[1108/632] w-[72rem] -translate-x-1/2 bg-gradient-to-tr from-indigo-300 via-sky-200 to-purple-200 opacity-60 dark:from-indigo-950 dark:via-slate-800 dark:to-purple-900"></div>
+        </div>
+        <main class="mx-auto w-full max-w-5xl px-4 py-10 sm:px-6 lg:px-8">
+            <div class="flex flex-col gap-6">
+                <section class="flex flex-col gap-4 rounded-2xl border border-border bg-card/90 p-6 shadow-lg shadow-black/5 backdrop-blur">
+                    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div class="space-y-2">
+                            <p class="text-xs uppercase tracking-[0.2em] text-muted-foreground">shadcn-style</p>
+                            <h1 class="text-3xl font-bold tracking-tight"><span class="bg-gradient-to-r from-primary to-violet-600 bg-clip-text text-transparent">简易留言板</span><span class="ml-2 text-base font-normal text-muted-foreground/60">v{{ version }} ({{ version_date }})</span></h1>
+                            <p class="text-sm text-muted-foreground">支持 Markdown 留言，按 Ctrl + Enter 快速提交。最多保留 {{ max_messages }} 条。</p>
+                        </div>
+                        <div class="flex items-center gap-3 self-end sm:self-auto">
+                            <span class="inline-flex items-center whitespace-nowrap rounded-full {% if !search_term.is_empty() %}bg-secondary{% else %}bg-secondary{% endif %} px-3 py-1 text-xs font-medium text-secondary-foreground">{% if !search_term.is_empty() %}共 {{ total_messages }} 条匹配{% else %}共 {{ total_messages }} 条留言{% endif %}</span>
+                            <span class="inline-flex items-center whitespace-nowrap rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">历史 {{ total_messages_ever }} 条</span>
+                            <a href="/dashboard" class="inline-flex h-9 items-center gap-2 whitespace-nowrap rounded-md border border-input bg-background px-3 text-xs font-medium shadow-sm transition hover:bg-accent hover:text-accent-foreground">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="20" y2="10"/><line x1="18" x2="18" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="16"/></svg>
+                                <span>数据看板</span>
+                            </a>
+                            <button type="button" id="language-toggle" class="inline-flex h-9 items-center gap-2 whitespace-nowrap rounded-md border border-input bg-background px-3 text-xs font-medium shadow-sm transition hover:bg-accent hover:text-accent-foreground">
+                                <span aria-hidden="true">🌐</span>
+                                <span class="language-toggle-label">中文</span>
+                            </button>
+                            <button type="button" id="theme-toggle" class="inline-flex h-9 items-center gap-2 whitespace-nowrap rounded-md border border-input bg-background px-3 text-xs font-medium shadow-sm transition hover:bg-accent hover:text-accent-foreground">
+                                <span aria-hidden="true">☀️</span>
+                                <span class="theme-toggle-label">亮色</span>
+                            </button>
+                        </div>
+                    </div>
+                    <form action="/submit" method="post" class="space-y-3">
+                        <div id="markdown-toolbar" class="flex flex-wrap items-center gap-1 rounded-t-lg border border-b-0 border-border bg-muted/40 px-2 py-2">
+                            <button type="button" class="toolbar-btn inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition hover:bg-accent hover:text-foreground" data-action="heading-1" title="H1">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h8"/><path d="M4 18V6"/><path d="M12 18V6"/><path d="m17 12 3-2v8"/></svg>
+                            </button>
+                            <button type="button" class="toolbar-btn inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition hover:bg-accent hover:text-foreground" data-action="heading-2" title="H2">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h8"/><path d="M4 18V6"/><path d="M12 18V6"/><path d="M21 18h-4c0-4 4-3 4-6 0-1.5-2-2.5-4-1"/></svg>
+                            </button>
+                            <div class="mx-1 h-4 w-[1px] bg-border"></div>
+                            <button type="button" class="toolbar-btn inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition hover:bg-accent hover:text-foreground" data-action="bold" title="Bold">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 12a4 4 0 0 0 0-8H6v8"/><path d="M15 20a4 4 0 0 0 0-8H6v8Z"/></svg>
+                            </button>
+                            <button type="button" class="toolbar-btn inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition hover:bg-accent hover:text-foreground" data-action="italic" title="Italic">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" x2="10" y1="4" y2="4"/><line x1="14" x2="5" y1="20" y2="20"/><line x1="15" x2="9" y1="4" y2="20"/></svg>
+                            </button>
+                            <button type="button" class="toolbar-btn inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition hover:bg-accent hover:text-foreground" data-action="quote" title="Quote">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21c3 0 7-1 7-8V5c0-1.25-.756-2.017-2-2H4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2 1 0 1 0 1 1v1c0 1-1 2-2 2s-1 .008-1 1.031V20c0 1 0 1 1 1z"/><path d="M15 21c3 0 7-1 7-8V5c0-1.25-.757-2.017-2-2h-4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2 1 0 1 0 1 1v1c0 1-1 2-2 2s-1 .008-1 1.031V20c0 1 0 1 1 1z"/></svg>
+                            </button>
+                            <div class="mx-1 h-4 w-[1px] bg-border"></div>
+                            <button type="button" class="toolbar-btn inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition hover:bg-accent hover:text-foreground" data-action="list-ul" title="List">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/></svg>
+                            </button>
+                            <button type="button" class="toolbar-btn inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition hover:bg-accent hover:text-foreground" data-action="list-ol" title="Ordered List">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="10" x2="21" y1="6" y2="6"/><line x1="10" x2="21" y1="12" y2="12"/><line x1="10" x2="21" y1="18" y2="18"/><path d="M4 6h1v4"/><path d="M4 10h2"/><path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"/></svg>
+                            </button>
+                            <div class="mx-1 h-4 w-[1px] bg-border"></div>
+                            <button type="button" class="toolbar-btn inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition hover:bg-accent hover:text-foreground" data-action="code" title="Inline Code">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+                            </button>
+                            <button type="button" class="toolbar-btn inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition hover:bg-accent hover:text-foreground" data-action="code-block" title="Code Block">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="m9 10 2 2-2 2"/><path d="m15 14-2-2 2-2"/></svg>
+                            </button>
+                            <button type="button" class="toolbar-btn inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition hover:bg-accent hover:text-foreground" data-action="link" title="Link">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                            </button>
+                        </div>
+                        <textarea id="message" name="message" rows="5" required placeholder="试试使用 **Markdown** 语法，支持代码块、列表等格式。" class="textarea-glow block w-full rounded-b-lg border border-t-0 border-input bg-background px-4 py-3 text-sm leading-6 text-foreground shadow-sm"></textarea>
+                        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-3">
+                            <div class="flex flex-1 items-center gap-2 rounded-md border border-input bg-background px-3 py-2.5 text-sm text-foreground shadow-sm focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/40 transition-all hover:border-ring/50">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="opacity-50"><path d="M12 2H2v10l9.29 9.29c.94.94 2.48.94 3.42 0l6.58-6.58c.94-.94.94-2.48 0-3.42L12 2Z"/><path d="M7 7h.01"/></svg>
+                                <input type="text" name="tags" placeholder="添加标签（用逗号或空格分隔）" class="flex-1 bg-transparent text-sm placeholder:text-muted-foreground/80 focus:outline-none">
+                            </div>
+                            <button type="submit" class="btn-glow inline-flex h-10 items-center justify-center whitespace-nowrap rounded-md bg-primary px-6 text-sm font-semibold text-primary-foreground shadow transition-all hover:bg-primary/90 hover:scale-[1.02] active:scale-[0.98]">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+                                <span>提交留言</span>
+                            </button>
+                            <span class="hidden sm:inline-flex items-center gap-1 text-xs text-muted-foreground">
+                                <kbd class="px-1.5 py-0.5 rounded border border-border bg-muted font-mono text-[10px]">Ctrl</kbd>
+                                <span>+</span>
+                                <kbd class="px-1.5 py-0.5 rounded border border-border bg-muted font-mono text-[10px]">Enter</kbd>
+                            </span>
+                        </div>
+                    </form>
+                </section>
+
+                <section class="rounded-2xl border border-border bg-card/90 p-5 shadow-sm shadow-black/5 backdrop-blur-sm">
+                    <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <h2 class="flex items-center gap-2 text-sm font-semibold">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-primary"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                                <span>搜索留言</span>
+                            </h2>
+                            <span class="hidden text-xs text-muted-foreground sm:inline">支持模糊匹配并保留分页</span>
+                        </div>
+                        {% if !search_term.is_empty() %}
+                        <span class="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                            <span>已筛选：{{ search_term }}</span>
+                        </span>
+                        {% endif %}
+                    </div>
+                    <form action="/" method="get" class="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-3">
+                        <div class="flex flex-1 items-center gap-2 rounded-md border border-input bg-background px-4 py-2 text-sm text-foreground shadow-sm transition-all focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/40 hover:border-ring/50">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="opacity-50"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                            <input type="search" name="q" value="{{ search_term }}" placeholder="输入关键字" class="flex-1 bg-transparent text-sm placeholder:text-muted-foreground/80 focus:outline-none">
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button type="submit" class="inline-flex h-10 items-center justify-center rounded-md bg-secondary px-4 text-sm font-medium text-secondary-foreground shadow-sm transition hover:bg-secondary/80">搜索</button>
+                            {% if !search_term.is_empty() %}<a href="/" class="inline-flex h-10 items-center justify-center rounded-md border border-input bg-background px-4 text-sm font-medium transition hover:bg-accent hover:text-accent-foreground">清除</a>{% endif %}
+                        </div>
+                    </form>
+                </section>
+
+                <section class="space-y-6">
+                    <ul class="space-y-4">
+                        {% for message in messages %}
+                        <li class="message-item glass-card-hover group/reply rounded-xl text-card-foreground" data-message-id="{{ message.id }}">
+                            <div class="flex flex-col gap-4 p-5 sm:flex-row sm:items-start sm:gap-4">
+                                <div class="hidden sm:block flex-shrink-0 mt-1">
+                                    <div class="w-10 h-10 text-xs rounded-full bg-gradient-to-br {{ message.avatar_gradient }} flex items-center justify-center text-white font-bold shadow-sm select-none ring-2 ring-background/50">
+                                        #{{ message.id|truncate(2, false, "") }}
+                                    </div>
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex items-center gap-2 mb-2">
+                                        <div class="sm:hidden flex-shrink-0">
+                                            <div class="w-6 h-6 text-[9px] rounded-full bg-gradient-to-br {{ message.avatar_gradient }} flex items-center justify-center text-white font-bold shadow-sm select-none ring-2 ring-background/50">
+                                                #{{ message.id|truncate(2, false, "") }}
+                                            </div>
+                                        </div>
+                                        <p class="text-xs font-medium text-muted-foreground/60" data-timestamp="{{ message.created_at }}">{{ message.display_time }}</p>
+                                    </div>
+                                    <div class="message-content prose prose-slate prose-sm max-w-none dark:prose-invert leading-7 text-foreground/90" data-markdown="{{ message.content|escape }}">{{ message.content|escape }}</div>
+                                    {% if !message.tags.is_empty() %}
+                                    <div class="message-tags flex flex-wrap gap-2 mt-4">
+                                        {% for tag in message.tags %}
+                                        <a href="/?tag={{ tag.id }}" class="tag-item group inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium transition-all hover:brightness-105 hover:shadow-sm active:scale-95" style="background-color: {{ tag.color }}15; color: {{ tag.color }};">
+                                            <span class="opacity-40 transition-opacity group-hover:opacity-60">#</span>
+                                            {{ tag.name }}
+                                        </a>
+                                        {% endfor %}
+                                    </div>
+                                    {% endif %}
+                                </div>
+                                <form action="/delete" method="post" class="flex shrink-0 items-center justify-end sm:self-start sm:ml-auto">
+                                    <input type="hidden" name="id" value="{{ message.id }}">
+                                    <input type="hidden" name="page" value="{{ current_page }}">
+                                    {% if !search_term.is_empty() %}<input type="hidden" name="q" value="{{ search_term }}">{% endif %}
+                                    {% if !tag_filter.is_empty() %}<input type="hidden" name="tag" value="{{ tag_filter }}">{% endif %}
+                                    <button type="submit" class="inline-flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 transition-all active:scale-90 opacity-0 group-hover/reply:opacity-100 focus:opacity-100">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                                    </button>
+                                </form>
+                            </div>
+                            <div class="replies-section border-t border-border/50 mx-5 px-0 pb-5 pt-4">
+                                {% if !message.replies.is_empty() %}
+                                <div class="replies-list divide-y divide-border/50">
+                                    {% for reply in message.replies %}
+                                    <div class="reply-item group/item flex gap-3 py-3 first:pt-0 last:pb-0" data-reply-id="{{ reply.id }}">
+                                        <div class="flex-shrink-0 mt-1">
+                                            <div class="w-6 h-6 text-[9px] rounded-full bg-gradient-to-br {{ reply.avatar_gradient }} flex items-center justify-center text-white font-bold shadow-sm select-none ring-2 ring-background/50">
+                                                #{{ reply.id|truncate(2, false, "") }}
+                                            </div>
+                                        </div>
+                                        <div class="flex-1 min-w-0">
+                                            <p class="text-[10px] font-medium text-muted-foreground mb-1" data-timestamp="{{ reply.created_at }}">{{ reply.display_time }}</p>
+                                            <div class="reply-content prose prose-slate max-w-none text-xs dark:prose-invert" data-markdown="{{ reply.content|escape }}">{{ reply.content|escape }}</div>
+                                        </div>
+                                        <form action="/delete-reply" method="post" class="flex-shrink-0 self-start opacity-0 group-hover/item:opacity-100 transition-opacity">
+                                            <input type="hidden" name="id" value="{{ reply.id }}">
+                                            <input type="hidden" name="page" value="{{ current_page }}">
+                                            {% if !search_term.is_empty() %}<input type="hidden" name="q" value="{{ search_term }}">{% endif %}
+                                            {% if !tag_filter.is_empty() %}<input type="hidden" name="tag" value="{{ tag_filter }}">{% endif %}
+                                            <button type="submit" class="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition">
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                                            </button>
+                                        </form>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                                {% endif %}
+                                <div class="reply-form-container {% if !message.replies.is_empty() %}mt-3{% endif %}">
+                                    <button type="button" class="reply-toggle-btn inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition" data-message-id="{{ message.id }}">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 21 1.9-5.7a8.5 8.5 0 1 1 3.8 3.8z"/></svg>
+                                        <span>添加答复</span>
+                                        {% if !message.replies.is_empty() %}<span class="text-[10px] text-muted-foreground/70">({{ message.replies.len() }})</span>{% endif %}
+                                    </button>
+                                    <form action="/reply" method="post" class="reply-form hidden mt-3" data-message-id="{{ message.id }}">
+                                        <input type="hidden" name="message_id" value="{{ message.id }}">
+                                        <input type="hidden" name="page" value="{{ current_page }}">
+                                        {% if !search_term.is_empty() %}<input type="hidden" name="q" value="{{ search_term }}">{% endif %}
+                                        {% if !tag_filter.is_empty() %}<input type="hidden" name="tag" value="{{ tag_filter }}">{% endif %}
+                                        <div class="flex gap-2">
+                                            <textarea name="content" rows="2" required placeholder="输入答复内容..." class="flex-1 rounded-lg border border-input bg-background px-3 py-2 text-xs leading-5 text-foreground shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/40 resize-none"></textarea>
+                                            <div class="flex flex-col gap-1">
+                                                <button type="submit" class="inline-flex h-8 items-center justify-center rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground shadow transition hover:bg-primary/90">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+                                                </button>
+                                                <button type="button" class="reply-cancel-btn inline-flex h-8 items-center justify-center rounded-md border border-input bg-background px-3 text-xs font-medium text-muted-foreground shadow-sm transition hover:bg-accent hover:text-accent-foreground">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        </li>
+                        {% else %}
+                        {% if !search_term.is_empty() %}
+                        <li class="animate-fade-in flex flex-col items-center justify-center gap-6 rounded-2xl border border-dashed border-border bg-gradient-to-b from-card/80 to-card/40 p-16 text-center">
+                            <div class="relative">
+                                <div class="absolute inset-0 animate-pulse rounded-full bg-primary/10 blur-xl"></div>
+                                <div class="relative rounded-full bg-gradient-to-br from-muted to-muted/50 p-6 shadow-inner">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="text-muted-foreground/50">
+                                        <circle cx="11" cy="11" r="8"/>
+                                        <path d="m21 21-4.3-4.3"/>
+                                        <path d="M8 8l6 6" class="text-destructive/50"/>
+                                    </svg>
+                                </div>
+                            </div>
+                            <div class="space-y-2">
+                                <p class="text-base font-semibold text-foreground">没有找到包含 "{{ search_term }}" 的留言</p>
+                                <p class="text-sm text-muted-foreground">试试其他关键字，或者清除搜索条件</p>
+                            </div>
+                        </li>
+                        {% else %}
+                        <li class="animate-fade-in flex flex-col items-center justify-center gap-6 rounded-2xl border border-dashed border-border bg-gradient-to-b from-card/80 to-card/40 p-16 text-center">
+                            <div class="relative">
+                                <div class="absolute inset-0 animate-pulse rounded-full bg-primary/10 blur-xl"></div>
+                                <div class="relative rounded-full bg-gradient-to-br from-muted to-muted/50 p-6 shadow-inner">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="text-muted-foreground/50">
+                                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                                        <path d="M8 10h.01"/>
+                                        <path d="M12 10h.01"/>
+                                        <path d="M16 10h.01"/>
+                                    </svg>
+                                </div>
+                            </div>
+                            <div class="space-y-2">
+                                <p class="text-base font-semibold text-foreground">还没有留言，快来留下第一条消息吧～</p>
+                                <p class="text-sm text-muted-foreground">在上方输入框中写下你的想法</p>
+                            </div>
+                        </li>
+                        {% endif %}
+                        {% endfor %}
+                    </ul>
+                    {% if total_pages > 1 %}
+                    <nav class="flex flex-col gap-3 rounded-xl border border-border bg-card/70 p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+                        <div class="text-xs text-muted-foreground">第 {{ current_page }} / {{ total_pages }} 页</div>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <a href="/?page={{ prev_page }}{% if !search_term.is_empty() %}&q={{ search_term }}{% endif %}{% if !tag_filter.is_empty() %}&tag={{ tag_filter }}{% endif %}" class="inline-flex h-9 min-w-[2.25rem] items-center justify-center rounded-md border border-input px-3 text-xs font-medium transition hover:bg-accent hover:text-accent-foreground {% if current_page == 1 %}cursor-not-allowed bg-muted text-muted-foreground{% endif %}">上一页</a>
+                            <div class="flex items-center gap-1">
+                                {% for page in pages %}
+                                {% if page == "..." %}
+                                <span class="px-2 text-muted-foreground">...</span>
+                                {% else %}
+                                <a href="/?page={{ page }}{% if !search_term.is_empty() %}&q={{ search_term }}{% endif %}{% if !tag_filter.is_empty() %}&tag={{ tag_filter }}{% endif %}" class="inline-flex h-9 min-w-[2.25rem] items-center justify-center rounded-md border border-input px-3 text-xs font-medium transition hover:bg-accent hover:text-accent-foreground {% if page|fmt == current_page|fmt %}bg-primary text-primary-foreground shadow hover:bg-primary/90{% endif %}">{{ page }}</a>
+                                {% endif %}
+                                {% endfor %}
+                            </div>
+                            <a href="/?page={{ next_page }}{% if !search_term.is_empty() %}&q={{ search_term }}{% endif %}{% if !tag_filter.is_empty() %}&tag={{ tag_filter }}{% endif %}" class="inline-flex h-9 min-w-[2.25rem] items-center justify-center rounded-md border border-input px-3 text-xs font-medium transition hover:bg-accent hover:text-accent-foreground {% if current_page == total_pages %}cursor-not-allowed bg-muted text-muted-foreground{% endif %}">下一页</a>
+                        </div>
+                    </nav>
+                    {% endif %}
+                </section>
+            </div>
+        </main>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js" referrerpolicy="no-referrer"></script>
+    <script src="/static/app.js"></script>
+</body>
+</html>
