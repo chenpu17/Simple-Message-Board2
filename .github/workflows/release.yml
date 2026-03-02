@@ -1,0 +1,306 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macOS ARM64
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            artifact_name: message-board
+            asset_name: message-board-darwin-arm64
+
+          # macOS x64
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            artifact_name: message-board
+            asset_name: message-board-darwin-x64
+
+          # Linux x64
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            artifact_name: message-board
+            asset_name: message-board-linux-x64
+
+          # Linux ARM64
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            artifact_name: message-board
+            asset_name: message-board-linux-arm64
+
+          # Windows x64
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            artifact_name: message-board.exe
+            asset_name: message-board-win32-x64.exe
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install cross-compilation tools (Linux ARM64)
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Package binaries
+        shell: bash
+        run: |
+          mkdir -p dist
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            cp target/${{ matrix.target }}/release/${{ matrix.artifact_name }} dist/${{ matrix.asset_name }}
+          else
+            cp target/${{ matrix.target }}/release/${{ matrix.artifact_name }} dist/${{ matrix.asset_name }}
+            chmod +x dist/${{ matrix.asset_name }}
+          fi
+          # Copy static files and templates
+          cp -r public dist/
+          cp -r templates dist/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}
+          path: dist/
+
+  publish-npm:
+    name: Publish to npm
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare npm package
+        run: |
+          mkdir -p npm-package/bin
+          mkdir -p npm-package/public
+          mkdir -p npm-package/templates
+
+          # Copy binaries
+          cp artifacts/message-board-darwin-arm64/* npm-package/bin/ 2>/dev/null || true
+          cp artifacts/message-board-darwin-x64/* npm-package/bin/ 2>/dev/null || true
+          cp artifacts/message-board-linux-x64/* npm-package/bin/ 2>/dev/null || true
+          cp artifacts/message-board-linux-arm64/* npm-package/bin/ 2>/dev/null || true
+          cp artifacts/message-board-win32-x64/* npm-package/bin/ 2>/dev/null || true
+
+          # Copy static files (from any artifact)
+          cp -r artifacts/message-board-linux-x64/public/* npm-package/public/ 2>/dev/null || true
+          cp -r artifacts/message-board-linux-x64/templates/* npm-package/templates/ 2>/dev/null || true
+
+          # Make binaries executable
+          chmod +x npm-package/bin/* 2>/dev/null || true
+
+      - name: Create package.json
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          cat > npm-package/package.json << EOF
+          {
+            "name": "simple-message-board-server",
+            "version": "${VERSION}",
+            "description": "A simple message board server - 简易留言板后端服务",
+            "main": "index.js",
+            "bin": {
+              "message-board": "./index.js"
+            },
+            "scripts": {
+              "start": "node index.js",
+              "postinstall": "node check-platform.js"
+            },
+            "files": [
+              "bin/",
+              "public/",
+              "templates/",
+              "index.js",
+              "check-platform.js",
+              "README.md"
+            ],
+            "keywords": [
+              "message-board",
+              "留言板",
+              "server",
+              "rust"
+            ],
+            "author": "chenpu17",
+            "license": "MIT",
+            "repository": {
+              "type": "git",
+              "url": "git+https://github.com/chenpu17/Simple-Message-Board2.git"
+            },
+            "bugs": {
+              "url": "https://github.com/chenpu17/Simple-Message-Board2/issues"
+            },
+            "homepage": "https://github.com/chenpu17/Simple-Message-Board2#readme",
+            "engines": {
+              "node": ">=14.0.0"
+            },
+            "os": [
+              "darwin",
+              "linux",
+              "win32"
+            ],
+            "cpu": [
+              "x64",
+              "arm64"
+            ]
+          }
+          EOF
+
+      - name: Create index.js
+        run: |
+          cat > npm-package/index.js << 'EOF'
+          #!/usr/bin/env node
+
+          const path = require('path');
+          const { spawn } = require('child_process');
+          const fs = require('fs');
+
+          const platform = process.platform;
+          const arch = process.arch;
+
+          // Determine the binary name based on platform and architecture
+          let binaryName;
+          if (platform === 'darwin') {
+            binaryName = arch === 'arm64' ? 'message-board-darwin-arm64' : 'message-board-darwin-x64';
+          } else if (platform === 'linux') {
+            binaryName = arch === 'arm64' ? 'message-board-linux-arm64' : 'message-board-linux-x64';
+          } else if (platform === 'win32') {
+            binaryName = 'message-board-win32-x64.exe';
+          } else {
+            console.error(`Unsupported platform: ${platform}-${arch}`);
+            process.exit(1);
+          }
+
+          const binaryPath = path.join(__dirname, 'bin', binaryName);
+
+          // Check if binary exists
+          if (!fs.existsSync(binaryPath)) {
+            console.error(`Binary not found: ${binaryPath}`);
+            console.error(`Your platform: ${platform}-${arch}`);
+            process.exit(1);
+          }
+
+          // Get the directory where the package is installed
+          const packageDir = __dirname;
+
+          // Set environment variables
+          const env = {
+            ...process.env,
+            // Set DATABASE_URL to use the package's data directory
+            DATABASE_URL: process.env.DATABASE_URL || `sqlite:${path.join(packageDir, 'data', 'messages.db')}?mode=rwc`,
+          };
+
+          // Change to package directory to ensure static files are found
+          process.chdir(packageDir);
+
+          // Spawn the binary with all arguments
+          const child = spawn(binaryPath, process.argv.slice(2), {
+            stdio: 'inherit',
+            env: env
+          });
+
+          child.on('error', (err) => {
+            console.error('Failed to start server:', err);
+            process.exit(1);
+          });
+
+          child.on('exit', (code) => {
+            process.exit(code || 0);
+          });
+          EOF
+
+          chmod +x npm-package/index.js
+
+      - name: Create check-platform.js
+        run: |
+          cat > npm-package/check-platform.js << 'EOF'
+          const platform = process.platform;
+          const arch = process.arch;
+
+          const supportedPlatforms = [
+            { platform: 'darwin', arch: 'x64' },
+            { platform: 'darwin', arch: 'arm64' },
+            { platform: 'linux', arch: 'x64' },
+            { platform: 'linux', arch: 'arm64' },
+            { platform: 'win32', arch: 'x64' },
+          ];
+
+          const isSupported = supportedPlatforms.some(
+            p => p.platform === platform && p.arch === arch
+          );
+
+          if (!isSupported) {
+            console.warn(`\nWarning: Your platform (${platform}-${arch}) is not officially supported.`);
+            console.warn('Supported platforms:');
+            supportedPlatforms.forEach(p => console.warn(`  - ${p.platform}-${p.arch}`));
+            console.warn('');
+          }
+          EOF
+
+      - name: Copy README
+        run: cp README.md npm-package/ 2>/dev/null || echo "# Simple Message Board Server" > npm-package/README.md
+
+      - name: Publish to npm
+        working-directory: npm-package
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  create-release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create release archives
+        run: |
+          mkdir -p releases
+          cd artifacts
+          for dir in */; do
+            dirname=${dir%/}
+            tar -czvf ../releases/${dirname}.tar.gz ${dirname}
+          done
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: releases/*
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
