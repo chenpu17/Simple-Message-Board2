@@ -1,5 +1,5 @@
-use actix_web::{App, HttpServer, web};
 use actix_files as fs;
+use actix_web::{web, App, HttpServer};
 use message_board::db::Repository;
 use message_board::handlers;
 use tracing_subscriber::EnvFilter;

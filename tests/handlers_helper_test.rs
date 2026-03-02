@@ -134,7 +134,10 @@ fn test_generate_pages_small_total() {
     // 总页数 <= 7，显示所有页码
     assert_eq!(generate_pages(1, 1), vec!["1"]);
     assert_eq!(generate_pages(1, 5), vec!["1", "2", "3", "4", "5"]);
-    assert_eq!(generate_pages(3, 7), vec!["1", "2", "3", "4", "5", "6", "7"]);
+    assert_eq!(
+        generate_pages(3, 7),
+        vec!["1", "2", "3", "4", "5", "6", "7"]
+    );
 }
 
 #[test]
@@ -339,9 +342,7 @@ fn get_safe_color(color: &str) -> String {
         let chars: Vec<char> = color.chars().collect();
         return format!(
             "#{}{}{}{}{}{}",
-            chars[1], chars[1],
-            chars[2], chars[2],
-            chars[3], chars[3]
+            chars[1], chars[1], chars[2], chars[2], chars[3], chars[3]
         );
     }
     "#888888".to_string()

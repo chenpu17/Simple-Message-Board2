@@ -2,17 +2,13 @@
 //!
 //! 测试 /static/* 路由的静态文件服务功能
 
-use actix_web::{test, App};
 use actix_files as fs;
+use actix_web::{test, App};
 
 /// 测试静态文件服务 - 不存在的文件
 #[actix_rt::test]
 async fn test_static_file_not_found() {
-    let app = test::init_service(
-        App::new()
-            .service(fs::Files::new("/static", "./public"))
-    )
-    .await;
+    let app = test::init_service(App::new().service(fs::Files::new("/static", "./public"))).await;
 
     // 请求不存在的文件
     let req = test::TestRequest::get()
@@ -28,11 +24,7 @@ async fn test_static_file_not_found() {
 /// 测试静态文件服务 - 路径遍历攻击防护
 #[actix_rt::test]
 async fn test_static_file_path_traversal_protection() {
-    let app = test::init_service(
-        App::new()
-            .service(fs::Files::new("/static", "./public"))
-    )
-    .await;
+    let app = test::init_service(App::new().service(fs::Files::new("/static", "./public"))).await;
 
     // 尝试路径遍历攻击
     let path_traversal_attempts = vec![
@@ -43,9 +35,7 @@ async fn test_static_file_path_traversal_protection() {
     ];
 
     for attempt in path_traversal_attempts {
-        let req = test::TestRequest::get()
-            .uri(attempt)
-            .to_request();
+        let req = test::TestRequest::get().uri(attempt).to_request();
 
         let resp = test::call_service(&app, req).await;
 
@@ -54,7 +44,8 @@ async fn test_static_file_path_traversal_protection() {
         assert!(
             status == 404 || status == 400 || status == 403,
             "Path traversal attempt '{}' should be blocked, got status {}",
-            attempt, status
+            attempt,
+            status
         );
     }
 }
@@ -70,19 +61,13 @@ async fn test_static_file_exists() {
         return;
     }
 
-    let app = test::init_service(
-        App::new()
-            .service(fs::Files::new("/static", "./public"))
-    )
-    .await;
+    let app = test::init_service(App::new().service(fs::Files::new("/static", "./public"))).await;
 
     // 尝试获取存在的文件
     // 检查 app.css 是否存在
     let app_css = public_dir.join("app.css");
     if app_css.exists() {
-        let req = test::TestRequest::get()
-            .uri("/static/app.css")
-            .to_request();
+        let req = test::TestRequest::get().uri("/static/app.css").to_request();
 
         let resp = test::call_service(&app, req).await;
 
@@ -99,9 +84,7 @@ async fn test_static_file_exists() {
     // 检查 app.js 是否存在
     let app_js = public_dir.join("app.js");
     if app_js.exists() {
-        let req = test::TestRequest::get()
-            .uri("/static/app.js")
-            .to_request();
+        let req = test::TestRequest::get().uri("/static/app.js").to_request();
 
         let resp = test::call_service(&app, req).await;
 
@@ -113,16 +96,10 @@ async fn test_static_file_exists() {
 /// 测试静态文件服务 - 子目录访问
 #[actix_rt::test]
 async fn test_static_file_subdirectory() {
-    let app = test::init_service(
-        App::new()
-            .service(fs::Files::new("/static", "./public"))
-    )
-    .await;
+    let app = test::init_service(App::new().service(fs::Files::new("/static", "./public"))).await;
 
     // 尝试访问子目录（如果存在）
-    let req = test::TestRequest::get()
-        .uri("/static/themes/")
-        .to_request();
+    let req = test::TestRequest::get().uri("/static/themes/").to_request();
 
     let resp = test::call_service(&app, req).await;
 
@@ -135,15 +112,9 @@ async fn test_static_file_subdirectory() {
 /// 测试静态文件服务 - 空路径
 #[actix_rt::test]
 async fn test_static_file_empty_path() {
-    let app = test::init_service(
-        App::new()
-            .service(fs::Files::new("/static", "./public"))
-    )
-    .await;
+    let app = test::init_service(App::new().service(fs::Files::new("/static", "./public"))).await;
 
-    let req = test::TestRequest::get()
-        .uri("/static")
-        .to_request();
+    let req = test::TestRequest::get().uri("/static").to_request();
 
     let resp = test::call_service(&app, req).await;
 
@@ -155,11 +126,7 @@ async fn test_static_file_empty_path() {
 /// 测试静态文件服务 - 特殊字符文件名
 #[actix_rt::test]
 async fn test_static_file_special_characters() {
-    let app = test::init_service(
-        App::new()
-            .service(fs::Files::new("/static", "./public"))
-    )
-    .await;
+    let app = test::init_service(App::new().service(fs::Files::new("/static", "./public"))).await;
 
     // 测试 URL 编码的文件名
     let special_paths = vec![
@@ -168,9 +135,7 @@ async fn test_static_file_special_characters() {
     ];
 
     for path in special_paths {
-        let req = test::TestRequest::get()
-            .uri(path)
-            .to_request();
+        let req = test::TestRequest::get().uri(path).to_request();
 
         let resp = test::call_service(&app, req).await;
 

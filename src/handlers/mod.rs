@@ -1,17 +1,17 @@
-mod home;
-mod dashboard;
 mod api;
+mod dashboard;
+mod home;
 
-use actix_web::{HttpResponse, web};
-use serde::Deserialize;
-use crate::db::Repository;
 use crate::config::{MAX_MESSAGES, MAX_MESSAGE_LENGTH, MAX_REPLY_LENGTH, MAX_TAG_NAME_LENGTH};
+use crate::db::Repository;
 use crate::utils::*;
-use tracing::{warn, error};
+use actix_web::{web, HttpResponse};
+use serde::Deserialize;
+use tracing::{error, warn};
 
-pub use home::home;
-pub use dashboard::dashboard;
 pub use api::{api_messages, api_tags};
+pub use dashboard::dashboard;
+pub use home::home;
 
 #[derive(Deserialize)]
 pub struct SubmitForm {
@@ -110,7 +110,8 @@ pub async fn submit_message(
 
     // 处理标签
     if !form.tags.is_empty() {
-        let tag_names: Vec<&str> = form.tags
+        let tag_names: Vec<&str> = form
+            .tags
             .split(|c| c == ',' || c == ' ' || c == '，')
             .map(|s| s.trim())
             .filter(|s| !s.is_empty())
@@ -152,10 +153,7 @@ pub async fn delete_message(
         .finish()
 }
 
-pub async fn submit_reply(
-    repo: web::Data<Repository>,
-    form: web::Form<ReplyForm>,
-) -> HttpResponse {
+pub async fn submit_reply(repo: web::Data<Repository>, form: web::Form<ReplyForm>) -> HttpResponse {
     let content = form.content.trim();
 
     // 输入验证：检查内容是否为空
@@ -176,7 +174,11 @@ pub async fn submit_reply(
 
     let created_at = now_iso();
 
-    if repo.create_reply(form.message_id, content, &created_at).await.is_ok() {
+    if repo
+        .create_reply(form.message_id, content, &created_at)
+        .await
+        .is_ok()
+    {
         if let Err(e) = repo.update_daily_stats(&today_date(), false).await {
             warn!("Failed to update daily stats for reply: {}", e);
         }

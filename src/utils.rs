@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc, Local};
+use chrono::{DateTime, Local, Utc};
 
 pub fn escape_html(s: &str) -> String {
     s.replace('&', "&amp;")
@@ -65,10 +65,9 @@ pub fn get_safe_color(color: &str) -> String {
     // 3-digit hex - expand
     if color.len() == 4 && color.starts_with('#') {
         let chars: Vec<char> = color.chars().collect();
-        return format!("#{}{}{}{}{}{}",
-            chars[1], chars[1],
-            chars[2], chars[2],
-            chars[3], chars[3]
+        return format!(
+            "#{}{}{}{}{}{}",
+            chars[1], chars[1], chars[2], chars[2], chars[3], chars[3]
         );
     }
     "#888888".to_string()

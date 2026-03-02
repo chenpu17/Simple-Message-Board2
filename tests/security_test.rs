@@ -4,9 +4,7 @@
 
 use actix_web::{test, web, App};
 use message_board::db::Repository;
-use message_board::handlers::{
-    api_messages, home, submit_message,
-};
+use message_board::handlers::{api_messages, home, submit_message};
 
 /// 创建测试用的内存数据库
 async fn create_test_repo() -> Repository {
@@ -123,7 +121,10 @@ async fn test_sql_injection_in_api_params() {
 
     for attempt in injection_attempts {
         let req = test::TestRequest::get()
-            .uri(&format!("/api/messages?since_id={}", urlencoding::encode(attempt)))
+            .uri(&format!(
+                "/api/messages?since_id={}",
+                urlencoding::encode(attempt)
+            ))
             .to_request();
 
         let _resp = test::call_service(&app, req).await;
@@ -221,7 +222,10 @@ async fn test_concurrent_tag_creation_idempotent() {
 
     // 验证只有一个标签
     let tags = repo.get_tags_with_count().await.unwrap();
-    let test_tags: Vec<_> = tags.iter().filter(|t| t.name == "idempotent-test").collect();
+    let test_tags: Vec<_> = tags
+        .iter()
+        .filter(|t| t.name == "idempotent-test")
+        .collect();
     assert_eq!(test_tags.len(), 1);
 }
 
@@ -267,9 +271,7 @@ async fn test_xss_content_handling() {
     assert_eq!(count, xss_vectors.len() as i64);
 
     // 获取首页并检查 HTML 是否正确转义
-    let req = test::TestRequest::get()
-        .uri("/")
-        .to_request();
+    let req = test::TestRequest::get().uri("/").to_request();
     let resp = test::call_service(&app, req).await;
     assert!(resp.status().is_success());
 
@@ -282,16 +284,28 @@ async fn test_xss_content_handling() {
     // 由于内容是通过 escape_html 渲染的，危险的标签应该被转义
     let has_escaped_script = html.contains("&lt;script&gt;");
     let has_no_raw_script = !html.contains("<script>alert");
-    assert!(has_escaped_script || has_no_raw_script, "XSS vector should be escaped");
+    assert!(
+        has_escaped_script || has_no_raw_script,
+        "XSS vector should be escaped"
+    );
 
     // 验证没有未转义的 JavaScript 事件处理器作为 HTML 属性
     // onclick=, onerror=, onload= 不应该作为 HTML 属性出现
     // 注意：data-markdown 属性可能包含这些内容，但那是安全的
     // 我们检查的是 HTML 属性中的事件处理器
     // 检查是否有 onclick=" 这种模式（作为 HTML 属性）
-    assert!(!html.contains("onclick=\""), "onclick attribute should not appear");
-    assert!(!html.contains("onerror=\""), "onerror attribute should not appear");
-    assert!(!html.contains("onload=\""), "onload attribute should not appear");
+    assert!(
+        !html.contains("onclick=\""),
+        "onclick attribute should not appear"
+    );
+    assert!(
+        !html.contains("onerror=\""),
+        "onerror attribute should not appear"
+    );
+    assert!(
+        !html.contains("onload=\""),
+        "onload attribute should not appear"
+    );
 }
 
 /// 测试 XSS 在标签中的处理
@@ -319,9 +333,7 @@ async fn test_xss_in_tags_handling() {
     assert_eq!(resp.status().as_u16(), 302);
 
     // 获取首页检查标签是否被正确转义
-    let req = test::TestRequest::get()
-        .uri("/")
-        .to_request();
+    let req = test::TestRequest::get().uri("/").to_request();
     let resp = test::call_service(&app, req).await;
     assert!(resp.status().is_success());
 

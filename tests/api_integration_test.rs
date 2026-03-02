@@ -3,11 +3,12 @@
 //! 测试所有 HTTP 接口的功能
 
 use actix_web::{test, web, App};
+use message_board::config::{MAX_MESSAGE_LENGTH, MAX_PAGES, MAX_REPLY_LENGTH, MAX_TAG_NAME_LENGTH};
 use message_board::db::Repository;
 use message_board::handlers::{
-    api_messages, api_tags, delete_message, delete_reply, dashboard, home, submit_message, submit_reply,
+    api_messages, api_tags, dashboard, delete_message, delete_reply, home, submit_message,
+    submit_reply,
 };
-use message_board::config::{MAX_MESSAGE_LENGTH, MAX_REPLY_LENGTH, MAX_TAG_NAME_LENGTH, MAX_PAGES};
 use serde_json::Value;
 
 /// 创建测试用的内存数据库
@@ -29,9 +30,7 @@ async fn test_api_messages_empty() {
     )
     .await;
 
-    let req = test::TestRequest::get()
-        .uri("/api/messages")
-        .to_request();
+    let req = test::TestRequest::get().uri("/api/messages").to_request();
 
     let resp = test::call_service(&app, req).await;
 
@@ -63,9 +62,7 @@ async fn test_api_messages_with_params() {
     .await;
 
     // 测试默认参数
-    let req = test::TestRequest::get()
-        .uri("/api/messages")
-        .to_request();
+    let req = test::TestRequest::get().uri("/api/messages").to_request();
     let resp = test::call_service(&app, req).await;
     assert!(resp.status().is_success());
     let body: Value = test::read_body_json(resp).await;
@@ -96,7 +93,8 @@ async fn test_api_messages_structure() {
     let repo = create_test_repo().await;
 
     let created_at = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
-    let msg_id = repo.create_message("Test with tags", &created_at)
+    let msg_id = repo
+        .create_message("Test with tags", &created_at)
         .await
         .unwrap();
 
@@ -116,9 +114,7 @@ async fn test_api_messages_structure() {
     )
     .await;
 
-    let req = test::TestRequest::get()
-        .uri("/api/messages")
-        .to_request();
+    let req = test::TestRequest::get().uri("/api/messages").to_request();
     let resp = test::call_service(&app, req).await;
     assert!(resp.status().is_success());
 
@@ -156,9 +152,7 @@ async fn test_api_tags_empty() {
     )
     .await;
 
-    let req = test::TestRequest::get()
-        .uri("/api/tags")
-        .to_request();
+    let req = test::TestRequest::get().uri("/api/tags").to_request();
 
     let resp = test::call_service(&app, req).await;
 
@@ -174,7 +168,8 @@ async fn test_api_tags_with_data() {
     let repo = create_test_repo().await;
 
     let created_at = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
-    let msg_id = repo.create_message("Test message", &created_at)
+    let msg_id = repo
+        .create_message("Test message", &created_at)
         .await
         .unwrap();
 
@@ -191,9 +186,7 @@ async fn test_api_tags_with_data() {
     )
     .await;
 
-    let req = test::TestRequest::get()
-        .uri("/api/tags")
-        .to_request();
+    let req = test::TestRequest::get().uri("/api/tags").to_request();
 
     let resp = test::call_service(&app, req).await;
     assert!(resp.status().is_success());
@@ -223,9 +216,7 @@ async fn test_home_page() {
     )
     .await;
 
-    let req = test::TestRequest::get()
-        .uri("/")
-        .to_request();
+    let req = test::TestRequest::get().uri("/").to_request();
 
     let resp = test::call_service(&app, req).await;
 
@@ -257,9 +248,7 @@ async fn test_home_page_with_search() {
     .await;
 
     // 搜索 "Rust"
-    let req = test::TestRequest::get()
-        .uri("/?q=Rust")
-        .to_request();
+    let req = test::TestRequest::get().uri("/?q=Rust").to_request();
 
     let resp = test::call_service(&app, req).await;
     assert!(resp.status().is_success());
@@ -291,16 +280,12 @@ async fn test_home_page_with_pagination() {
     .await;
 
     // 测试第一页
-    let req = test::TestRequest::get()
-        .uri("/?page=1")
-        .to_request();
+    let req = test::TestRequest::get().uri("/?page=1").to_request();
     let resp = test::call_service(&app, req).await;
     assert!(resp.status().is_success());
 
     // 测试第二页
-    let req = test::TestRequest::get()
-        .uri("/?page=2")
-        .to_request();
+    let req = test::TestRequest::get().uri("/?page=2").to_request();
     let resp = test::call_service(&app, req).await;
     assert!(resp.status().is_success());
 }
@@ -370,7 +355,8 @@ async fn test_delete_message() {
 
     // 创建测试留言
     let created_at = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
-    let msg_id = repo.create_message("To be deleted", &created_at)
+    let msg_id = repo
+        .create_message("To be deleted", &created_at)
         .await
         .unwrap();
 
@@ -403,7 +389,8 @@ async fn test_submit_reply() {
 
     // 创建测试留言
     let created_at = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
-    let msg_id = repo.create_message("Original message", &created_at)
+    let msg_id = repo
+        .create_message("Original message", &created_at)
         .await
         .unwrap();
 
@@ -440,7 +427,8 @@ async fn test_submit_empty_reply() {
 
     // 创建测试留言
     let created_at = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
-    let msg_id = repo.create_message("Original message", &created_at)
+    let msg_id = repo
+        .create_message("Original message", &created_at)
         .await
         .unwrap();
 
@@ -454,10 +442,7 @@ async fn test_submit_empty_reply() {
     let msg_id_str = msg_id.to_string();
     let req = test::TestRequest::post()
         .uri("/reply")
-        .set_form(&[
-            ("message_id", msg_id_str.as_str()),
-            ("content", ""),
-        ])
+        .set_form(&[("message_id", msg_id_str.as_str()), ("content", "")])
         .to_request();
 
     let resp = test::call_service(&app, req).await;
@@ -477,10 +462,12 @@ async fn test_delete_reply() {
 
     // 创建测试留言和回复
     let created_at = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
-    let msg_id = repo.create_message("Original message", &created_at)
+    let msg_id = repo
+        .create_message("Original message", &created_at)
         .await
         .unwrap();
-    let reply_id = repo.create_reply(msg_id, "Reply to delete", &created_at)
+    let reply_id = repo
+        .create_reply(msg_id, "Reply to delete", &created_at)
         .await
         .unwrap();
 
@@ -520,9 +507,7 @@ async fn test_dashboard_page_empty() {
     )
     .await;
 
-    let req = test::TestRequest::get()
-        .uri("/dashboard")
-        .to_request();
+    let req = test::TestRequest::get().uri("/dashboard").to_request();
 
     let resp = test::call_service(&app, req).await;
 
@@ -546,10 +531,12 @@ async fn test_dashboard_page_with_data() {
     let created_at = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
 
     // 创建留言和标签
-    let msg1 = repo.create_message("First message with some content", &created_at)
+    let msg1 = repo
+        .create_message("First message with some content", &created_at)
         .await
         .unwrap();
-    let msg2 = repo.create_message("Second message", &created_at)
+    let msg2 = repo
+        .create_message("Second message", &created_at)
         .await
         .unwrap();
 
@@ -560,9 +547,15 @@ async fn test_dashboard_page_with_data() {
     repo.add_tag_to_message(msg2, tag2.id).await.unwrap();
 
     // 添加回复
-    repo.create_reply(msg1, "Reply 1", &created_at).await.unwrap();
-    repo.create_reply(msg1, "Reply 2", &created_at).await.unwrap();
-    repo.create_reply(msg2, "Reply 3", &created_at).await.unwrap();
+    repo.create_reply(msg1, "Reply 1", &created_at)
+        .await
+        .unwrap();
+    repo.create_reply(msg1, "Reply 2", &created_at)
+        .await
+        .unwrap();
+    repo.create_reply(msg2, "Reply 3", &created_at)
+        .await
+        .unwrap();
 
     let app = test::init_service(
         App::new()
@@ -571,9 +564,7 @@ async fn test_dashboard_page_with_data() {
     )
     .await;
 
-    let req = test::TestRequest::get()
-        .uri("/dashboard")
-        .to_request();
+    let req = test::TestRequest::get().uri("/dashboard").to_request();
 
     let resp = test::call_service(&app, req).await;
     assert!(resp.status().is_success());
@@ -649,7 +640,8 @@ async fn test_submit_reply_max_length() {
     let repo = create_test_repo().await;
 
     let created_at = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
-    let msg_id = repo.create_message("Original message", &created_at)
+    let msg_id = repo
+        .create_message("Original message", &created_at)
         .await
         .unwrap();
 
@@ -684,7 +676,8 @@ async fn test_submit_reply_exceeds_max_length() {
     let repo = create_test_repo().await;
 
     let created_at = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
-    let msg_id = repo.create_message("Original message", &created_at)
+    let msg_id = repo
+        .create_message("Original message", &created_at)
         .await
         .unwrap();
 
@@ -759,9 +752,7 @@ async fn test_pagination_negative_page() {
     .await;
 
     // 请求负数页码
-    let req = test::TestRequest::get()
-        .uri("/?page=-1")
-        .to_request();
+    let req = test::TestRequest::get().uri("/?page=-1").to_request();
 
     let resp = test::call_service(&app, req).await;
     assert!(resp.status().is_success());
@@ -785,9 +776,7 @@ async fn test_pagination_zero_page() {
     .await;
 
     // 请求零页码
-    let req = test::TestRequest::get()
-        .uri("/?page=0")
-        .to_request();
+    let req = test::TestRequest::get().uri("/?page=0").to_request();
 
     let resp = test::call_service(&app, req).await;
     assert!(resp.status().is_success());
@@ -937,9 +926,7 @@ async fn test_search_special_characters() {
     assert!(resp.status().is_success());
 
     // 搜索包含 _ 的内容
-    let req = test::TestRequest::get()
-        .uri("/?q=_underscore")
-        .to_request();
+    let req = test::TestRequest::get().uri("/?q=_underscore").to_request();
     let resp = test::call_service(&app, req).await;
     assert!(resp.status().is_success());
 }
@@ -950,7 +937,8 @@ async fn test_delete_with_redirect_params() {
     let repo = create_test_repo().await;
 
     let created_at = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
-    let msg_id = repo.create_message("To be deleted", &created_at)
+    let msg_id = repo
+        .create_message("To be deleted", &created_at)
         .await
         .unwrap();
 
@@ -1044,23 +1032,17 @@ async fn test_invalid_tag_filter() {
     .await;
 
     // 测试非数字的标签 ID
-    let req = test::TestRequest::get()
-        .uri("/?tag=invalid")
-        .to_request();
+    let req = test::TestRequest::get().uri("/?tag=invalid").to_request();
     let resp = test::call_service(&app, req).await;
     assert!(resp.status().is_success());
 
     // 测试负数的标签 ID
-    let req = test::TestRequest::get()
-        .uri("/?tag=-1")
-        .to_request();
+    let req = test::TestRequest::get().uri("/?tag=-1").to_request();
     let resp = test::call_service(&app, req).await;
     assert!(resp.status().is_success());
 
     // 测试零标签 ID
-    let req = test::TestRequest::get()
-        .uri("/?tag=0")
-        .to_request();
+    let req = test::TestRequest::get().uri("/?tag=0").to_request();
     let resp = test::call_service(&app, req).await;
     assert!(resp.status().is_success());
 }
@@ -1123,9 +1105,16 @@ async fn test_home_page_filter_by_valid_tag() {
     let created_at = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
 
     // 创建留言并添加标签
-    let msg1 = repo.create_message("Rust message", &created_at).await.unwrap();
-    let msg2 = repo.create_message("Web message", &created_at).await.unwrap();
-    let msg3 = repo.create_message("Another Rust message", &created_at)
+    let msg1 = repo
+        .create_message("Rust message", &created_at)
+        .await
+        .unwrap();
+    let msg2 = repo
+        .create_message("Web message", &created_at)
+        .await
+        .unwrap();
+    let msg3 = repo
+        .create_message("Another Rust message", &created_at)
         .await
         .unwrap();
 
@@ -1168,7 +1157,8 @@ async fn test_delete_nonexistent_reply() {
 
     // 创建测试留言（用于保持引用完整性）
     let created_at = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
-    let msg_id = repo.create_message("Original message", &created_at)
+    let msg_id = repo
+        .create_message("Original message", &created_at)
         .await
         .unwrap();
 

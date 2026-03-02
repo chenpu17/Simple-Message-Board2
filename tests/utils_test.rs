@@ -33,10 +33,9 @@ fn get_safe_color(color: &str) -> String {
     // 3-digit hex - expand
     if color.len() == 4 && color.starts_with('#') {
         let chars: Vec<char> = color.chars().collect();
-        return format!("#{}{}{}{}{}{}",
-            chars[1], chars[1],
-            chars[2], chars[2],
-            chars[3], chars[3]
+        return format!(
+            "#{}{}{}{}{}{}",
+            chars[1], chars[1], chars[2], chars[2], chars[3], chars[3]
         );
     }
     "#888888".to_string()
@@ -122,10 +121,7 @@ fn test_escape_html_complex() {
             "<img src=\"x\" onerror=\"alert(1)\">",
             "&lt;img src=&quot;x&quot; onerror=&quot;alert(1)&quot;&gt;",
         ),
-        (
-            "javascript:alert('xss')",
-            "javascript:alert(&#39;xss&#39;)",
-        ),
+        ("javascript:alert('xss')", "javascript:alert(&#39;xss&#39;)"),
         (
             "<a href='javascript:void(0)'>link</a>",
             "&lt;a href=&#39;javascript:void(0)&#39;&gt;link&lt;/a&gt;",
@@ -399,7 +395,9 @@ fn test_now_iso_current() {
     let after = Utc::now();
 
     // 结果应该在 before 和 after 之间
-    let parsed = DateTime::parse_from_rfc3339(&result).unwrap().with_timezone(&Utc);
+    let parsed = DateTime::parse_from_rfc3339(&result)
+        .unwrap()
+        .with_timezone(&Utc);
     assert!(parsed >= before - chrono::Duration::seconds(1));
     assert!(parsed <= after + chrono::Duration::seconds(1));
 }

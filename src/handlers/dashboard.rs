@@ -1,7 +1,7 @@
-use actix_web::{HttpResponse, web};
-use crate::db::Repository;
 use crate::config::VERSION;
+use crate::db::Repository;
 use crate::utils::*;
+use actix_web::{web, HttpResponse};
 
 struct TagRankingItem {
     name: String,
@@ -36,7 +36,8 @@ pub async fn dashboard(repo: web::Data<Repository>) -> HttpResponse {
     // 获取标签排行
     let tags = repo.get_tags_with_count().await.unwrap_or_default();
     let max_count = tags.iter().map(|t| t.count).max().unwrap_or(1);
-    let tag_ranking: Vec<TagRankingItem> = tags.iter()
+    let tag_ranking: Vec<TagRankingItem> = tags
+        .iter()
         .filter(|t| t.count > 0)
         .take(10)
         .map(|t| TagRankingItem {
@@ -49,28 +50,38 @@ pub async fn dashboard(repo: web::Data<Repository>) -> HttpResponse {
 
     // 获取每日统计
     let daily_stats = repo.get_daily_stats().await.unwrap_or_default();
-    let daily_labels: Vec<String> = daily_stats.iter().map(|d| {
-        // UTF-8 安全截取：从第6个字符开始（跳过 "YYYY-"）
-        if d.date.len() > 5 {
-            d.date[5..].to_string()
-        } else {
-            d.date.clone()
-        }
-    }).collect();
+    let daily_labels: Vec<String> = daily_stats
+        .iter()
+        .map(|d| {
+            // UTF-8 安全截取：从第6个字符开始（跳过 "YYYY-"）
+            if d.date.len() > 5 {
+                d.date[5..].to_string()
+            } else {
+                d.date.clone()
+            }
+        })
+        .collect();
     let daily_message_data: Vec<i64> = daily_stats.iter().map(|d| d.message_count).collect();
     let daily_reply_data: Vec<i64> = daily_stats.iter().map(|d| d.reply_count).collect();
 
     // 获取真实的时段分布数据
-    let hourly_data = repo.get_hourly_distribution().await.unwrap_or_else(|_| vec![0; 24]);
+    let hourly_data = repo
+        .get_hourly_distribution()
+        .await
+        .unwrap_or_else(|_| vec![0; 24]);
 
     // 获取真实的热门留言
-    let top_msg_data = repo.get_top_messages_by_replies(5).await.unwrap_or_default();
-    let top_messages: Vec<TopMessageItem> = top_msg_data.into_iter().map(|(content, reply_count)| {
-        TopMessageItem {
+    let top_msg_data = repo
+        .get_top_messages_by_replies(5)
+        .await
+        .unwrap_or_default();
+    let top_messages: Vec<TopMessageItem> = top_msg_data
+        .into_iter()
+        .map(|(content, reply_count)| TopMessageItem {
             content: truncate_utf8(&content, 80),
             reply_count,
-        }
-    }).collect();
+        })
+        .collect();
 
     let html = render_dashboard(
         total_messages_ever,
@@ -105,7 +116,8 @@ fn render_dashboard(
     let tag_ranking_html = render_tag_ranking(tag_ranking);
     let top_messages_html = render_top_messages(top_messages);
 
-    format!(r#"<!DOCTYPE html>
+    format!(
+        r#"<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
@@ -345,10 +357,30 @@ fn render_dashboard(
 </body>
 </html>"#,
         VERSION,
-        stat_card(total_messages_ever, "历史总留言", "text-primary", r#"<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>"#),
-        stat_card(current_message_count, "当前留言数", "text-emerald-500", r#"<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>"#),
-        stat_card(current_reply_count, "总答复数", "text-amber-500", r#"<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 21 1.9-5.7a8.5 8.5 0 1 1 3.8 3.8z"/></svg>"#),
-        stat_card(avg_message_length, "平均字数", "text-violet-500", r#"<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7V4h16v3"/><path d="M9 20h6"/><path d="M12 4v16"/></svg>"#),
+        stat_card(
+            total_messages_ever,
+            "历史总留言",
+            "text-primary",
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>"#
+        ),
+        stat_card(
+            current_message_count,
+            "当前留言数",
+            "text-emerald-500",
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>"#
+        ),
+        stat_card(
+            current_reply_count,
+            "总答复数",
+            "text-amber-500",
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 21 1.9-5.7a8.5 8.5 0 1 1 3.8 3.8z"/></svg>"#
+        ),
+        stat_card(
+            avg_message_length,
+            "平均字数",
+            "text-violet-500",
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7V4h16v3"/><path d="M9 20h6"/><path d="M12 4v16"/></svg>"#
+        ),
         tag_ranking_html,
         top_messages_html,
         serde_json::to_string(daily_labels).unwrap_or_else(|_| "[]".to_string()),
@@ -359,7 +391,8 @@ fn render_dashboard(
 }
 
 fn stat_card(value: i64, label: &str, color_class: &str, icon: &str) -> String {
-    format!(r#"<div class="rounded-xl border border-border bg-card/90 p-5 shadow-sm backdrop-blur transition hover:shadow-md">
+    format!(
+        r#"<div class="rounded-xl border border-border bg-card/90 p-5 shadow-sm backdrop-blur transition hover:shadow-md">
         <div class="flex items-center justify-between">
             <div class="rounded-lg bg-muted p-2 {}">{}</div>
         </div>
@@ -367,7 +400,9 @@ fn stat_card(value: i64, label: &str, color_class: &str, icon: &str) -> String {
             <p class="text-2xl font-bold tracking-tight">{}</p>
             <p class="text-xs text-muted-foreground mt-1">{}</p>
         </div>
-    </div>"#, color_class, icon, value, label)
+    </div>"#,
+        color_class, icon, value, label
+    )
 }
 
 fn render_tag_ranking(tags: &[TagRankingItem]) -> String {
@@ -406,7 +441,8 @@ fn render_tag_ranking(tags: &[TagRankingItem]) -> String {
         )
     }).collect();
 
-    format!(r#"<section class="rounded-xl border border-border bg-card/90 p-5 shadow-sm backdrop-blur">
+    format!(
+        r#"<section class="rounded-xl border border-border bg-card/90 p-5 shadow-sm backdrop-blur">
             <h3 class="text-sm font-semibold mb-4 flex items-center gap-2">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-primary"><path d="M12 2H2v10l9.29 9.29c.94.94 2.48.94 3.42 0l6.58-6.58c.94-.94.94-2.48 0-3.42L12 2Z"/><path d="M7 7h.01"/></svg>
                 <span>标签使用排行 TOP {}</span>
@@ -440,7 +476,8 @@ fn render_top_messages(messages: &[TopMessageItem]) -> String {
         )
     }).collect();
 
-    format!(r#"<section class="rounded-xl border border-border bg-card/90 p-5 shadow-sm backdrop-blur">
+    format!(
+        r#"<section class="rounded-xl border border-border bg-card/90 p-5 shadow-sm backdrop-blur">
             <h3 class="text-sm font-semibold mb-4 flex items-center gap-2">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-primary"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>
                 <span>热门留言 TOP {}</span>

@@ -1,6 +1,9 @@
-use std::str::FromStr;
-use sqlx::{SqlitePool, Row, sqlite::{SqliteConnectOptions, SqlitePoolOptions}};
 use crate::db::models::*;
+use sqlx::{
+    sqlite::{SqliteConnectOptions, SqlitePoolOptions},
+    Row, SqlitePool,
+};
+use std::str::FromStr;
 
 /// 转义LIKE查询中的通配符，防止通配符注入
 fn escape_like_pattern(query: &str) -> String {
@@ -18,13 +21,10 @@ pub struct Repository {
 impl Repository {
     pub async fn new(database_url: &str) -> Result<Self, sqlx::Error> {
         // 配置SQLite连接选项：启用外键约束（对所有连接生效）
-        let options = SqliteConnectOptions::from_str(database_url)?
-            .pragma("foreign_keys", "ON");
+        let options = SqliteConnectOptions::from_str(database_url)?.pragma("foreign_keys", "ON");
 
         // 创建连接池，确保每个连接都应用PRAGMA
-        let pool = SqlitePoolOptions::new()
-            .connect_with(options)
-            .await?;
+        let pool = SqlitePoolOptions::new().connect_with(options).await?;
 
         let repo = Repository { pool };
         repo.init_tables().await?;
@@ -55,7 +55,7 @@ impl Repository {
                 content TEXT NOT NULL,
                 created_at TEXT NOT NULL
             )
-            "#
+            "#,
         )
         .execute(&self.pool)
         .await?;
@@ -67,7 +67,7 @@ impl Repository {
                 name TEXT UNIQUE NOT NULL,
                 color TEXT NOT NULL DEFAULT '#3b82f6'
             )
-            "#
+            "#,
         )
         .execute(&self.pool)
         .await?;
@@ -81,7 +81,7 @@ impl Repository {
                 FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE,
                 FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
             )
-            "#
+            "#,
         )
         .execute(&self.pool)
         .await?;
@@ -95,7 +95,7 @@ impl Repository {
                 created_at TEXT NOT NULL,
                 FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
             )
-            "#
+            "#,
         )
         .execute(&self.pool)
         .await?;
@@ -106,7 +106,7 @@ impl Repository {
                 key TEXT PRIMARY KEY,
                 value INTEGER NOT NULL DEFAULT 0
             )
-            "#
+            "#,
         )
         .execute(&self.pool)
         .await?;
@@ -118,7 +118,7 @@ impl Repository {
                 message_count INTEGER NOT NULL DEFAULT 0,
                 reply_count INTEGER NOT NULL DEFAULT 0
             )
-            "#
+            "#,
         )
         .execute(&self.pool)
         .await?;
@@ -127,21 +127,27 @@ impl Repository {
     }
 
     // Message operations
-    pub async fn create_message(&self, content: &str, created_at: &str) -> Result<i64, sqlx::Error> {
-        let result = sqlx::query(
-            "INSERT INTO messages (content, created_at) VALUES (?, ?)"
-        )
-        .bind(content)
-        .bind(created_at)
-        .execute(&self.pool)
-        .await?;
+    pub async fn create_message(
+        &self,
+        content: &str,
+        created_at: &str,
+    ) -> Result<i64, sqlx::Error> {
+        let result = sqlx::query("INSERT INTO messages (content, created_at) VALUES (?, ?)")
+            .bind(content)
+            .bind(created_at)
+            .execute(&self.pool)
+            .await?;
         Ok(result.last_insert_rowid())
     }
 
-    pub async fn get_messages(&self, page: i64, per_page: i64) -> Result<Vec<Message>, sqlx::Error> {
+    pub async fn get_messages(
+        &self,
+        page: i64,
+        per_page: i64,
+    ) -> Result<Vec<Message>, sqlx::Error> {
         let offset = (page - 1) * per_page;
         sqlx::query_as::<_, Message>(
-            "SELECT id, content, created_at FROM messages ORDER BY id DESC LIMIT ? OFFSET ?"
+            "SELECT id, content, created_at FROM messages ORDER BY id DESC LIMIT ? OFFSET ?",
         )
         .bind(per_page)
         .bind(offset)
@@ -166,43 +172,39 @@ impl Repository {
 
     pub async fn count_search_messages(&self, query: &str) -> Result<i64, sqlx::Error> {
         let search_pattern = format!("%{}%", escape_like_pattern(query));
-        let result: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM messages WHERE content LIKE ? ESCAPE '\\'"
-        )
-        .bind(&search_pattern)
-        .fetch_one(&self.pool)
-        .await?;
+        let result: (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM messages WHERE content LIKE ? ESCAPE '\\'")
+                .bind(&search_pattern)
+                .fetch_one(&self.pool)
+                .await?;
         Ok(result.0)
     }
 
     pub async fn count_messages_by_tag(&self, tag_id: i64) -> Result<i64, sqlx::Error> {
-        let result: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM message_tags WHERE tag_id = ?"
-        )
-        .bind(tag_id)
-        .fetch_one(&self.pool)
-        .await?;
+        let result: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM message_tags WHERE tag_id = ?")
+            .bind(tag_id)
+            .fetch_one(&self.pool)
+            .await?;
         Ok(result.0)
     }
 
     // Tag operations
     pub async fn get_or_create_tag(&self, name: &str) -> Result<Tag, sqlx::Error> {
-        if let Some(tag) = sqlx::query_as::<_, Tag>("SELECT id, name, color FROM tags WHERE name = ?")
-            .bind(name)
-            .fetch_optional(&self.pool)
-            .await?
+        if let Some(tag) =
+            sqlx::query_as::<_, Tag>("SELECT id, name, color FROM tags WHERE name = ?")
+                .bind(name)
+                .fetch_optional(&self.pool)
+                .await?
         {
             return Ok(tag);
         }
 
         let color = Self::generate_tag_color(name);
-        sqlx::query(
-            "INSERT INTO tags (name, color) VALUES (?, ?)"
-        )
-        .bind(name)
-        .bind(&color)
-        .execute(&self.pool)
-        .await?;
+        sqlx::query("INSERT INTO tags (name, color) VALUES (?, ?)")
+            .bind(name)
+            .bind(&color)
+            .execute(&self.pool)
+            .await?;
 
         sqlx::query_as::<_, Tag>("SELECT id, name, color FROM tags WHERE name = ?")
             .bind(name)
@@ -212,21 +214,24 @@ impl Repository {
 
     fn generate_tag_color(name: &str) -> String {
         let colors = [
-            "#3b82f6", "#ef4444", "#22c55e", "#f59e0b",
-            "#8b5cf6", "#ec4899", "#06b6d4", "#84cc16",
+            "#3b82f6", "#ef4444", "#22c55e", "#f59e0b", "#8b5cf6", "#ec4899", "#06b6d4", "#84cc16",
         ];
-        let hash = name.bytes().fold(0usize, |acc, b| acc.wrapping_add(b as usize));
+        let hash = name
+            .bytes()
+            .fold(0usize, |acc, b| acc.wrapping_add(b as usize));
         colors[hash % colors.len()].to_string()
     }
 
-    pub async fn add_tag_to_message(&self, message_id: i64, tag_id: i64) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "INSERT OR IGNORE INTO message_tags (message_id, tag_id) VALUES (?, ?)"
-        )
-        .bind(message_id)
-        .bind(tag_id)
-        .execute(&self.pool)
-        .await?;
+    pub async fn add_tag_to_message(
+        &self,
+        message_id: i64,
+        tag_id: i64,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query("INSERT OR IGNORE INTO message_tags (message_id, tag_id) VALUES (?, ?)")
+            .bind(message_id)
+            .bind(tag_id)
+            .execute(&self.pool)
+            .await?;
         Ok(())
     }
 
@@ -238,22 +243,26 @@ impl Repository {
             LEFT JOIN message_tags mt ON t.id = mt.tag_id
             GROUP BY t.id
             ORDER BY t.name
-            "#
+            "#,
         )
         .fetch_all(&self.pool)
         .await
     }
 
     // Reply operations
-    pub async fn create_reply(&self, message_id: i64, content: &str, created_at: &str) -> Result<i64, sqlx::Error> {
-        let result = sqlx::query(
-            "INSERT INTO replies (message_id, content, created_at) VALUES (?, ?, ?)"
-        )
-        .bind(message_id)
-        .bind(content)
-        .bind(created_at)
-        .execute(&self.pool)
-        .await?;
+    pub async fn create_reply(
+        &self,
+        message_id: i64,
+        content: &str,
+        created_at: &str,
+    ) -> Result<i64, sqlx::Error> {
+        let result =
+            sqlx::query("INSERT INTO replies (message_id, content, created_at) VALUES (?, ?, ?)")
+                .bind(message_id)
+                .bind(content)
+                .bind(created_at)
+                .execute(&self.pool)
+                .await?;
         Ok(result.last_insert_rowid())
     }
 
@@ -267,12 +276,10 @@ impl Repository {
 
     // Stats operations
     pub async fn get_stat(&self, key: &str) -> Result<i64, sqlx::Error> {
-        let result: Option<(i64,)> = sqlx::query_as(
-            "SELECT value FROM stats WHERE key = ?"
-        )
-        .bind(key)
-        .fetch_optional(&self.pool)
-        .await?;
+        let result: Option<(i64,)> = sqlx::query_as("SELECT value FROM stats WHERE key = ?")
+            .bind(key)
+            .fetch_optional(&self.pool)
+            .await?;
 
         Ok(result.map(|r| r.0).unwrap_or(0))
     }
@@ -296,19 +303,23 @@ impl Repository {
 
     pub async fn get_daily_stats(&self) -> Result<Vec<DailyStat>, sqlx::Error> {
         sqlx::query_as::<_, DailyStat>(
-            "SELECT date, message_count, reply_count FROM daily_stats ORDER BY date DESC LIMIT 30"
+            "SELECT date, message_count, reply_count FROM daily_stats ORDER BY date DESC LIMIT 30",
         )
         .fetch_all(&self.pool)
         .await
     }
 
-    pub async fn update_daily_stats(&self, date: &str, is_message: bool) -> Result<(), sqlx::Error> {
+    pub async fn update_daily_stats(
+        &self,
+        date: &str,
+        is_message: bool,
+    ) -> Result<(), sqlx::Error> {
         if is_message {
             sqlx::query(
                 r#"
                 INSERT INTO daily_stats (date, message_count, reply_count) VALUES (?, 1, 0)
                 ON CONFLICT(date) DO UPDATE SET message_count = message_count + 1
-                "#
+                "#,
             )
             .bind(date)
             .execute(&self.pool)
@@ -318,7 +329,7 @@ impl Repository {
                 r#"
                 INSERT INTO daily_stats (date, message_count, reply_count) VALUES (?, 0, 1)
                 ON CONFLICT(date) DO UPDATE SET reply_count = reply_count + 1
-                "#
+                "#,
             )
             .bind(date)
             .execute(&self.pool)
@@ -343,9 +354,13 @@ impl Repository {
     }
 
     // API: Get messages with details
-    pub async fn get_messages_since(&self, since_id: i64, limit: i64) -> Result<Vec<MessageWithDetails>, sqlx::Error> {
+    pub async fn get_messages_since(
+        &self,
+        since_id: i64,
+        limit: i64,
+    ) -> Result<Vec<MessageWithDetails>, sqlx::Error> {
         let messages = sqlx::query_as::<_, Message>(
-            "SELECT id, content, created_at FROM messages WHERE id > ? ORDER BY id ASC LIMIT ?"
+            "SELECT id, content, created_at FROM messages WHERE id > ? ORDER BY id ASC LIMIT ?",
         )
         .bind(since_id)
         .bind(limit)
@@ -357,23 +372,29 @@ impl Repository {
         let all_tags = self.get_tags_for_messages_batch(&message_ids).await?;
         let all_replies = self.get_replies_for_messages_batch(&message_ids).await?;
 
-        let result: Vec<MessageWithDetails> = messages.into_iter().map(|msg| {
-            let tags = all_tags.get(&msg.id).cloned().unwrap_or_default();
-            let replies = all_replies.get(&msg.id).cloned().unwrap_or_default();
-            MessageWithDetails {
-                id: msg.id,
-                content: msg.content,
-                created_at: msg.created_at,
-                tags,
-                replies,
-            }
-        }).collect();
+        let result: Vec<MessageWithDetails> = messages
+            .into_iter()
+            .map(|msg| {
+                let tags = all_tags.get(&msg.id).cloned().unwrap_or_default();
+                let replies = all_replies.get(&msg.id).cloned().unwrap_or_default();
+                MessageWithDetails {
+                    id: msg.id,
+                    content: msg.content,
+                    created_at: msg.created_at,
+                    tags,
+                    replies,
+                }
+            })
+            .collect();
 
         Ok(result)
     }
 
     // Batch operations to fix N+1 queries
-    pub async fn get_tags_for_messages_batch(&self, message_ids: &[i64]) -> Result<std::collections::HashMap<i64, Vec<Tag>>, sqlx::Error> {
+    pub async fn get_tags_for_messages_batch(
+        &self,
+        message_ids: &[i64],
+    ) -> Result<std::collections::HashMap<i64, Vec<Tag>>, sqlx::Error> {
         if message_ids.is_empty() {
             return Ok(std::collections::HashMap::new());
         }
@@ -405,7 +426,10 @@ impl Repository {
         Ok(result)
     }
 
-    pub async fn get_replies_for_messages_batch(&self, message_ids: &[i64]) -> Result<std::collections::HashMap<i64, Vec<Reply>>, sqlx::Error> {
+    pub async fn get_replies_for_messages_batch(
+        &self,
+        message_ids: &[i64],
+    ) -> Result<std::collections::HashMap<i64, Vec<Reply>>, sqlx::Error> {
         if message_ids.is_empty() {
             return Ok(std::collections::HashMap::new());
         }
@@ -422,7 +446,8 @@ impl Repository {
         }
 
         let rows = query.fetch_all(&self.pool).await?;
-        let mut result: std::collections::HashMap<i64, Vec<Reply>> = std::collections::HashMap::new();
+        let mut result: std::collections::HashMap<i64, Vec<Reply>> =
+            std::collections::HashMap::new();
 
         for row in rows {
             let message_id: i64 = row.try_get("message_id")?;
@@ -440,11 +465,9 @@ impl Repository {
 
     // Dashboard real data queries
     pub async fn get_average_message_length(&self) -> Result<f64, sqlx::Error> {
-        let result: Option<(f64,)> = sqlx::query_as(
-            "SELECT AVG(LENGTH(content)) FROM messages"
-        )
-        .fetch_optional(&self.pool)
-        .await?;
+        let result: Option<(f64,)> = sqlx::query_as("SELECT AVG(LENGTH(content)) FROM messages")
+            .fetch_optional(&self.pool)
+            .await?;
         Ok(result.map(|r| r.0).unwrap_or(0.0))
     }
 
@@ -455,7 +478,7 @@ impl Repository {
             FROM messages
             GROUP BY hour
             ORDER BY hour
-            "#
+            "#,
         )
         .fetch_all(&self.pool)
         .await?;
@@ -469,7 +492,10 @@ impl Repository {
         Ok(hourly)
     }
 
-    pub async fn get_top_messages_by_replies(&self, limit: i64) -> Result<Vec<(String, i64)>, sqlx::Error> {
+    pub async fn get_top_messages_by_replies(
+        &self,
+        limit: i64,
+    ) -> Result<Vec<(String, i64)>, sqlx::Error> {
         let rows: Vec<(String, i64)> = sqlx::query_as(
             r#"
             SELECT m.content, COUNT(r.id) as reply_count
@@ -478,7 +504,7 @@ impl Repository {
             GROUP BY m.id
             ORDER BY reply_count DESC
             LIMIT ?
-            "#
+            "#,
         )
         .bind(limit)
         .fetch_all(&self.pool)
@@ -486,7 +512,11 @@ impl Repository {
         Ok(rows)
     }
 
-    pub async fn get_messages_with_tags_batch(&self, page: i64, per_page: i64) -> Result<Vec<MessageWithTags>, sqlx::Error> {
+    pub async fn get_messages_with_tags_batch(
+        &self,
+        page: i64,
+        per_page: i64,
+    ) -> Result<Vec<MessageWithTags>, sqlx::Error> {
         let messages = self.get_messages(page, per_page).await?;
         if messages.is_empty() {
             return Ok(Vec::new());
@@ -495,20 +525,28 @@ impl Repository {
         let message_ids: Vec<i64> = messages.iter().map(|m| m.id).collect();
         let all_tags = self.get_tags_for_messages_batch(&message_ids).await?;
 
-        let result: Vec<MessageWithTags> = messages.into_iter().map(|msg| {
-            let tags = all_tags.get(&msg.id).cloned().unwrap_or_default();
-            MessageWithTags {
-                id: msg.id,
-                content: msg.content,
-                created_at: msg.created_at,
-                tags,
-            }
-        }).collect();
+        let result: Vec<MessageWithTags> = messages
+            .into_iter()
+            .map(|msg| {
+                let tags = all_tags.get(&msg.id).cloned().unwrap_or_default();
+                MessageWithTags {
+                    id: msg.id,
+                    content: msg.content,
+                    created_at: msg.created_at,
+                    tags,
+                }
+            })
+            .collect();
 
         Ok(result)
     }
 
-    pub async fn search_messages_with_tags_batch(&self, query: &str, page: i64, per_page: i64) -> Result<Vec<MessageWithTags>, sqlx::Error> {
+    pub async fn search_messages_with_tags_batch(
+        &self,
+        query: &str,
+        page: i64,
+        per_page: i64,
+    ) -> Result<Vec<MessageWithTags>, sqlx::Error> {
         let offset = (page - 1) * per_page;
         let search_pattern = format!("%{}%", escape_like_pattern(query));
 
@@ -528,20 +566,28 @@ impl Repository {
         let message_ids: Vec<i64> = messages.iter().map(|m| m.id).collect();
         let all_tags = self.get_tags_for_messages_batch(&message_ids).await?;
 
-        let result: Vec<MessageWithTags> = messages.into_iter().map(|msg| {
-            let tags = all_tags.get(&msg.id).cloned().unwrap_or_default();
-            MessageWithTags {
-                id: msg.id,
-                content: msg.content,
-                created_at: msg.created_at,
-                tags,
-            }
-        }).collect();
+        let result: Vec<MessageWithTags> = messages
+            .into_iter()
+            .map(|msg| {
+                let tags = all_tags.get(&msg.id).cloned().unwrap_or_default();
+                MessageWithTags {
+                    id: msg.id,
+                    content: msg.content,
+                    created_at: msg.created_at,
+                    tags,
+                }
+            })
+            .collect();
 
         Ok(result)
     }
 
-    pub async fn get_messages_by_tag_with_tags_batch(&self, tag_id: i64, page: i64, per_page: i64) -> Result<Vec<MessageWithTags>, sqlx::Error> {
+    pub async fn get_messages_by_tag_with_tags_batch(
+        &self,
+        tag_id: i64,
+        page: i64,
+        per_page: i64,
+    ) -> Result<Vec<MessageWithTags>, sqlx::Error> {
         let offset = (page - 1) * per_page;
 
         let messages = sqlx::query_as::<_, Message>(
@@ -552,7 +598,7 @@ impl Repository {
             WHERE mt.tag_id = ?
             ORDER BY m.id DESC
             LIMIT ? OFFSET ?
-            "#
+            "#,
         )
         .bind(tag_id)
         .bind(per_page)
@@ -567,15 +613,18 @@ impl Repository {
         let message_ids: Vec<i64> = messages.iter().map(|m| m.id).collect();
         let all_tags = self.get_tags_for_messages_batch(&message_ids).await?;
 
-        let result: Vec<MessageWithTags> = messages.into_iter().map(|msg| {
-            let tags = all_tags.get(&msg.id).cloned().unwrap_or_default();
-            MessageWithTags {
-                id: msg.id,
-                content: msg.content,
-                created_at: msg.created_at,
-                tags,
-            }
-        }).collect();
+        let result: Vec<MessageWithTags> = messages
+            .into_iter()
+            .map(|msg| {
+                let tags = all_tags.get(&msg.id).cloned().unwrap_or_default();
+                MessageWithTags {
+                    id: msg.id,
+                    content: msg.content,
+                    created_at: msg.created_at,
+                    tags,
+                }
+            })
+            .collect();
 
         Ok(result)
     }

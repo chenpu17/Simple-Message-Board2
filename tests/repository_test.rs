@@ -27,7 +27,8 @@ async fn test_create_message() {
     let repo = create_test_repo().await;
 
     let created_at = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
-    let id = repo.create_message("Hello, world!", &created_at)
+    let id = repo
+        .create_message("Hello, world!", &created_at)
         .await
         .unwrap();
 
@@ -45,7 +46,8 @@ async fn test_create_multiple_messages() {
     let created_at = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
 
     for i in 1..=10 {
-        let id = repo.create_message(&format!("Message {}", i), &created_at)
+        let id = repo
+            .create_message(&format!("Message {}", i), &created_at)
             .await
             .unwrap();
         assert_eq!(id, i);
@@ -61,7 +63,8 @@ async fn test_delete_message() {
     let repo = create_test_repo().await;
 
     let created_at = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
-    let id = repo.create_message("To be deleted", &created_at)
+    let id = repo
+        .create_message("To be deleted", &created_at)
         .await
         .unwrap();
 
@@ -216,7 +219,8 @@ async fn test_add_tag_to_message() {
     let repo = create_test_repo().await;
 
     let created_at = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
-    let msg_id = repo.create_message("Test message", &created_at)
+    let msg_id = repo
+        .create_message("Test message", &created_at)
         .await
         .unwrap();
 
@@ -235,7 +239,8 @@ async fn test_add_multiple_tags_to_message() {
     let repo = create_test_repo().await;
 
     let created_at = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
-    let msg_id = repo.create_message("Test message", &created_at)
+    let msg_id = repo
+        .create_message("Test message", &created_at)
         .await
         .unwrap();
 
@@ -257,7 +262,8 @@ async fn test_add_tag_to_message_idempotent() {
     let repo = create_test_repo().await;
 
     let created_at = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
-    let msg_id = repo.create_message("Test message", &created_at)
+    let msg_id = repo
+        .create_message("Test message", &created_at)
         .await
         .unwrap();
 
@@ -307,11 +313,13 @@ async fn test_create_reply() {
     let repo = create_test_repo().await;
 
     let created_at = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
-    let msg_id = repo.create_message("Original message", &created_at)
+    let msg_id = repo
+        .create_message("Original message", &created_at)
         .await
         .unwrap();
 
-    let reply_id = repo.create_reply(msg_id, "This is a reply", &created_at)
+    let reply_id = repo
+        .create_reply(msg_id, "This is a reply", &created_at)
         .await
         .unwrap();
 
@@ -327,7 +335,8 @@ async fn test_create_multiple_replies() {
     let repo = create_test_repo().await;
 
     let created_at = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
-    let msg_id = repo.create_message("Original message", &created_at)
+    let msg_id = repo
+        .create_message("Original message", &created_at)
         .await
         .unwrap();
 
@@ -347,10 +356,12 @@ async fn test_delete_reply() {
     let repo = create_test_repo().await;
 
     let created_at = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
-    let msg_id = repo.create_message("Original message", &created_at)
+    let msg_id = repo
+        .create_message("Original message", &created_at)
         .await
         .unwrap();
-    let reply_id = repo.create_reply(msg_id, "Reply to delete", &created_at)
+    let reply_id = repo
+        .create_reply(msg_id, "Reply to delete", &created_at)
         .await
         .unwrap();
 
@@ -489,7 +500,10 @@ async fn test_get_replies_for_messages_batch() {
         .await
         .unwrap();
 
-    let replies = repo.get_replies_for_messages_batch(&[msg1, msg2]).await.unwrap();
+    let replies = repo
+        .get_replies_for_messages_batch(&[msg1, msg2])
+        .await
+        .unwrap();
 
     assert_eq!(replies.get(&msg1).unwrap().len(), 2);
     assert_eq!(replies.get(&msg2).unwrap().len(), 1);
@@ -503,9 +517,16 @@ async fn test_get_messages_by_tag() {
     let created_at = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
 
     // 创建留言并添加标签
-    let msg1 = repo.create_message("Rust message", &created_at).await.unwrap();
-    let msg2 = repo.create_message("Web message", &created_at).await.unwrap();
-    let msg3 = repo.create_message("Another Rust message", &created_at)
+    let msg1 = repo
+        .create_message("Rust message", &created_at)
+        .await
+        .unwrap();
+    let msg2 = repo
+        .create_message("Web message", &created_at)
+        .await
+        .unwrap();
+    let msg3 = repo
+        .create_message("Another Rust message", &created_at)
         .await
         .unwrap();
 
@@ -520,7 +541,8 @@ async fn test_get_messages_by_tag() {
     let count = repo.count_messages_by_tag(rust_tag.id).await.unwrap();
     assert_eq!(count, 2);
 
-    let messages = repo.get_messages_by_tag_with_tags_batch(rust_tag.id, 1, 10)
+    let messages = repo
+        .get_messages_by_tag_with_tags_batch(rust_tag.id, 1, 10)
         .await
         .unwrap();
     assert_eq!(messages.len(), 2);
@@ -568,7 +590,9 @@ async fn test_get_average_message_length() {
 
     // 创建留言
     repo.create_message("12345", &created_at).await.unwrap(); // 5 字符
-    repo.create_message("1234567890", &created_at).await.unwrap(); // 10 字符
+    repo.create_message("1234567890", &created_at)
+        .await
+        .unwrap(); // 10 字符
 
     let avg = repo.get_average_message_length().await.unwrap();
     assert_eq!(avg, 7.5);
@@ -602,16 +626,30 @@ async fn test_get_top_messages_by_replies() {
     let created_at = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
 
     // 创建留言和回复
-    let msg1 = repo.create_message("Popular message", &created_at).await.unwrap();
-    let msg2 = repo.create_message("Less popular", &created_at).await.unwrap();
+    let msg1 = repo
+        .create_message("Popular message", &created_at)
+        .await
+        .unwrap();
+    let msg2 = repo
+        .create_message("Less popular", &created_at)
+        .await
+        .unwrap();
 
     // msg1 有 3 条回复
-    repo.create_reply(msg1, "Reply 1", &created_at).await.unwrap();
-    repo.create_reply(msg1, "Reply 2", &created_at).await.unwrap();
-    repo.create_reply(msg1, "Reply 3", &created_at).await.unwrap();
+    repo.create_reply(msg1, "Reply 1", &created_at)
+        .await
+        .unwrap();
+    repo.create_reply(msg1, "Reply 2", &created_at)
+        .await
+        .unwrap();
+    repo.create_reply(msg1, "Reply 3", &created_at)
+        .await
+        .unwrap();
 
     // msg2 有 1 条回复
-    repo.create_reply(msg2, "Reply 1", &created_at).await.unwrap();
+    repo.create_reply(msg2, "Reply 1", &created_at)
+        .await
+        .unwrap();
 
     let top = repo.get_top_messages_by_replies(5).await.unwrap();
     assert_eq!(top.len(), 2);
@@ -629,11 +667,16 @@ async fn test_cascade_delete_replies() {
     let created_at = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
 
     // 创建留言和回复
-    let msg_id = repo.create_message("Message with replies", &created_at)
+    let msg_id = repo
+        .create_message("Message with replies", &created_at)
         .await
         .unwrap();
-    repo.create_reply(msg_id, "Reply 1", &created_at).await.unwrap();
-    repo.create_reply(msg_id, "Reply 2", &created_at).await.unwrap();
+    repo.create_reply(msg_id, "Reply 1", &created_at)
+        .await
+        .unwrap();
+    repo.create_reply(msg_id, "Reply 2", &created_at)
+        .await
+        .unwrap();
 
     // 确认回复存在
     let total = repo.get_total_replies().await.unwrap();
@@ -655,7 +698,8 @@ async fn test_cascade_delete_tags() {
     let created_at = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
 
     // 创建留言和标签
-    let msg_id = repo.create_message("Message with tags", &created_at)
+    let msg_id = repo
+        .create_message("Message with tags", &created_at)
         .await
         .unwrap();
     let tag = repo.get_or_create_tag("test").await.unwrap();
@@ -681,9 +725,18 @@ async fn test_search_messages_with_tags_batch() {
     let created_at = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
 
     // 创建留言并添加标签
-    let msg1 = repo.create_message("Rust programming is fun", &created_at).await.unwrap();
-    let msg2 = repo.create_message("Web development with Rust", &created_at).await.unwrap();
-    let msg3 = repo.create_message("Python is also great", &created_at).await.unwrap();
+    let msg1 = repo
+        .create_message("Rust programming is fun", &created_at)
+        .await
+        .unwrap();
+    let msg2 = repo
+        .create_message("Web development with Rust", &created_at)
+        .await
+        .unwrap();
+    let msg3 = repo
+        .create_message("Python is also great", &created_at)
+        .await
+        .unwrap();
 
     let rust_tag = repo.get_or_create_tag("rust").await.unwrap();
     let web_tag = repo.get_or_create_tag("web").await.unwrap();
@@ -695,7 +748,10 @@ async fn test_search_messages_with_tags_batch() {
     repo.add_tag_to_message(msg3, python_tag.id).await.unwrap();
 
     // 搜索包含 "Rust" 的留言
-    let messages = repo.search_messages_with_tags_batch("Rust", 1, 10).await.unwrap();
+    let messages = repo
+        .search_messages_with_tags_batch("Rust", 1, 10)
+        .await
+        .unwrap();
 
     assert_eq!(messages.len(), 2);
 
@@ -714,7 +770,10 @@ async fn test_search_messages_with_tags_batch() {
     }
 
     // 搜索不存在的内容
-    let messages = repo.search_messages_with_tags_batch("NotFound", 1, 10).await.unwrap();
+    let messages = repo
+        .search_messages_with_tags_batch("NotFound", 1, 10)
+        .await
+        .unwrap();
     assert_eq!(messages.len(), 0);
 }
 

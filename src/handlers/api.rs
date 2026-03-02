@@ -1,6 +1,6 @@
-use actix_web::{HttpResponse, web};
-use serde::{Deserialize, Serialize};
 use crate::db::Repository;
+use actix_web::{web, HttpResponse};
+use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize)]
 pub struct MessagesQuery {
@@ -48,23 +48,32 @@ pub async fn api_messages(
 
     match repo.get_messages_since(since_id, limit).await {
         Ok(messages) => {
-            let response: Vec<MessageResponse> = messages.iter().map(|m| {
-                MessageResponse {
+            let response: Vec<MessageResponse> = messages
+                .iter()
+                .map(|m| MessageResponse {
                     id: m.id,
                     content: m.content.clone(),
                     created_at: m.created_at.clone(),
-                    tags: m.tags.iter().map(|t| TagResponse {
-                        id: t.id,
-                        name: t.name.clone(),
-                        color: t.color.clone(),
-                    }).collect(),
-                    replies: m.replies.iter().map(|r| ReplyResponse {
-                        id: r.id,
-                        content: r.content.clone(),
-                        created_at: r.created_at.clone(),
-                    }).collect(),
-                }
-            }).collect();
+                    tags: m
+                        .tags
+                        .iter()
+                        .map(|t| TagResponse {
+                            id: t.id,
+                            name: t.name.clone(),
+                            color: t.color.clone(),
+                        })
+                        .collect(),
+                    replies: m
+                        .replies
+                        .iter()
+                        .map(|r| ReplyResponse {
+                            id: r.id,
+                            content: r.content.clone(),
+                            created_at: r.created_at.clone(),
+                        })
+                        .collect(),
+                })
+                .collect();
 
             HttpResponse::Ok()
                 .content_type("application/json")
@@ -77,14 +86,15 @@ pub async fn api_messages(
 pub async fn api_tags(repo: web::Data<Repository>) -> HttpResponse {
     match repo.get_tags_with_count().await {
         Ok(tags) => {
-            let response: Vec<TagWithCountResponse> = tags.iter().map(|t| {
-                TagWithCountResponse {
+            let response: Vec<TagWithCountResponse> = tags
+                .iter()
+                .map(|t| TagWithCountResponse {
                     id: t.id,
                     name: t.name.clone(),
                     color: t.color.clone(),
                     count: t.count,
-                }
-            }).collect();
+                })
+                .collect();
 
             HttpResponse::Ok()
                 .content_type("application/json")
