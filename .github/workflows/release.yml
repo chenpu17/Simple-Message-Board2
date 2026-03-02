@@ -19,32 +19,32 @@ jobs:
           # macOS ARM64
           - target: aarch64-apple-darwin
             os: macos-latest
-            artifact_name: message-board
-            asset_name: message-board-darwin-arm64
+            artifact_name: message_board
+            asset_name: message_board-darwin-arm64
 
           # macOS x64
           - target: x86_64-apple-darwin
             os: macos-latest
-            artifact_name: message-board
-            asset_name: message-board-darwin-x64
+            artifact_name: message_board
+            asset_name: message_board-darwin-x64
 
           # Linux x64
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
-            artifact_name: message-board
-            asset_name: message-board-linux-x64
+            artifact_name: message_board
+            asset_name: message_board-linux-x64
 
           # Linux ARM64
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-latest
-            artifact_name: message-board
-            asset_name: message-board-linux-arm64
+            artifact_name: message_board
+            asset_name: message_board-linux-arm64
 
           # Windows x64
           - target: x86_64-pc-windows-msvc
             os: windows-latest
-            artifact_name: message-board.exe
-            asset_name: message-board-win32-x64.exe
+            artifact_name: message_board.exe
+            asset_name: message_board-win32-x64.exe
 
     steps:
       - uses: actions/checkout@v4
@@ -59,6 +59,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
 
       - name: Build
         run: cargo build --release --target ${{ matrix.target }}
@@ -66,12 +67,12 @@ jobs:
       - name: Package binaries
         shell: bash
         run: |
-          mkdir -p dist
+          mkdir -p dist/bin
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            cp target/${{ matrix.target }}/release/${{ matrix.artifact_name }} dist/${{ matrix.asset_name }}
+            cp target/${{ matrix.target }}/release/${{ matrix.artifact_name }} dist/bin/${{ matrix.asset_name }}
           else
-            cp target/${{ matrix.target }}/release/${{ matrix.artifact_name }} dist/${{ matrix.asset_name }}
-            chmod +x dist/${{ matrix.asset_name }}
+            cp target/${{ matrix.target }}/release/${{ matrix.artifact_name }} dist/bin/${{ matrix.asset_name }}
+            chmod +x dist/bin/${{ matrix.asset_name }}
           fi
           # Copy static files and templates
           cp -r public dist/
@@ -107,19 +108,27 @@ jobs:
           mkdir -p npm-package/public
           mkdir -p npm-package/templates
 
-          # Copy binaries
-          cp artifacts/message-board-darwin-arm64/* npm-package/bin/ 2>/dev/null || true
-          cp artifacts/message-board-darwin-x64/* npm-package/bin/ 2>/dev/null || true
-          cp artifacts/message-board-linux-x64/* npm-package/bin/ 2>/dev/null || true
-          cp artifacts/message-board-linux-arm64/* npm-package/bin/ 2>/dev/null || true
-          cp artifacts/message-board-win32-x64/* npm-package/bin/ 2>/dev/null || true
+          # Copy binaries from each artifact's bin directory
+          for artifact in message_board-darwin-arm64 message_board-darwin-x64 message_board-linux-x64 message_board-linux-arm64 message_board-win32-x64.exe; do
+            if [ -d "artifacts/${artifact}/bin" ]; then
+              cp artifacts/${artifact}/bin/* npm-package/bin/ 2>/dev/null || true
+            fi
+          done
 
-          # Copy static files (from any artifact)
-          cp -r artifacts/message-board-linux-x64/public/* npm-package/public/ 2>/dev/null || true
-          cp -r artifacts/message-board-linux-x64/templates/* npm-package/templates/ 2>/dev/null || true
+          # Copy static files (from linux-x64 artifact)
+          if [ -d "artifacts/message_board-linux-x64/public" ]; then
+            cp -r artifacts/message_board-linux-x64/public/* npm-package/public/
+          fi
+          if [ -d "artifacts/message_board-linux-x64/templates" ]; then
+            cp -r artifacts/message_board-linux-x64/templates/* npm-package/templates/
+          fi
 
-          # Make binaries executable
-          chmod +x npm-package/bin/* 2>/dev/null || true
+          # Make non-Windows binaries executable
+          chmod +x npm-package/bin/message_board-darwin-* npm-package/bin/message_board-linux-* 2>/dev/null || true
+
+          # Verify binaries exist
+          echo "Binaries in npm-package/bin:"
+          ls -la npm-package/bin/ || echo "No binaries found!"
 
       - name: Create package.json
         run: |
@@ -191,13 +200,15 @@ jobs:
           // Determine the binary name based on platform and architecture
           let binaryName;
           if (platform === 'darwin') {
-            binaryName = arch === 'arm64' ? 'message-board-darwin-arm64' : 'message-board-darwin-x64';
+            binaryName = arch === 'arm64' ? 'message_board-darwin-arm64' : 'message_board-darwin-x64';
           } else if (platform === 'linux') {
-            binaryName = arch === 'arm64' ? 'message-board-linux-arm64' : 'message-board-linux-x64';
+            binaryName = arch === 'arm64' ? 'message_board-linux-arm64' : 'message_board-linux-x64';
           } else if (platform === 'win32') {
-            binaryName = 'message-board-win32-x64.exe';
+            binaryName = 'message_board-win32-x64.exe';
           } else {
             console.error(`Unsupported platform: ${platform}-${arch}`);
+            console.error('Supported platforms: darwin-x64, darwin-arm64, linux-x64, linux-arm64, win32-x64');
+            console.error('Please report this issue at: https://github.com/chenpu17/Simple-Message-Board2/issues');
             process.exit(1);
           }
 
@@ -207,17 +218,24 @@ jobs:
           if (!fs.existsSync(binaryPath)) {
             console.error(`Binary not found: ${binaryPath}`);
             console.error(`Your platform: ${platform}-${arch}`);
+            console.error('Please report this issue at: https://github.com/chenpu17/Simple-Message-Board2/issues');
             process.exit(1);
           }
 
           // Get the directory where the package is installed
           const packageDir = __dirname;
 
+          // Ensure data directory exists
+          const dataDir = path.join(packageDir, 'data');
+          if (!fs.existsSync(dataDir)) {
+            fs.mkdirSync(dataDir, { recursive: true });
+          }
+
           // Set environment variables
           const env = {
             ...process.env,
             // Set DATABASE_URL to use the package's data directory
-            DATABASE_URL: process.env.DATABASE_URL || `sqlite:${path.join(packageDir, 'data', 'messages.db')}?mode=rwc`,
+            DATABASE_URL: process.env.DATABASE_URL || `sqlite:${path.join(dataDir, 'messages.db')}?mode=rwc`,
           };
 
           // Change to package directory to ensure static files are found
@@ -270,6 +288,22 @@ jobs:
       - name: Copy README
         run: cp README.md npm-package/ 2>/dev/null || echo "# Simple Message Board Server" > npm-package/README.md
 
+      - name: Validate npm package
+        run: |
+          echo "Package contents:"
+          ls -la npm-package/
+          echo ""
+          echo "Binaries:"
+          ls -la npm-package/bin/
+          echo ""
+          echo "Package size:"
+          du -sh npm-package/
+          # Check if package exceeds npm size limit (250MB)
+          SIZE=$(du -sm npm-package/ | cut -f1)
+          if [ "$SIZE" -gt 200 ]; then
+            echo "Warning: Package size (${SIZE}MB) is approaching npm limit (250MB)"
+          fi
+
       - name: Publish to npm
         working-directory: npm-package
         run: npm publish --access public
@@ -296,6 +330,9 @@ jobs:
             dirname=${dir%/}
             tar -czvf ../releases/${dirname}.tar.gz ${dirname}
           done
+          cd ..
+          # Generate checksums
+          sha256sum releases/* > releases/checksums.txt
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
