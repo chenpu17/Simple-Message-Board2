@@ -112,7 +112,7 @@ pub async fn submit_message(
     if !form.tags.is_empty() {
         let tag_names: Vec<&str> = form
             .tags
-            .split(|c| c == ',' || c == ' ' || c == '，')
+            .split([',', ' ', '，'])
             .map(|s| s.trim())
             .filter(|s| !s.is_empty())
             .collect();

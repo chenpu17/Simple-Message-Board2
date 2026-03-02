@@ -50,7 +50,7 @@ pub async fn home(repo: web::Data<Repository>, query: web::Query<QueryParams>) -
         .map(|s| s.chars().take(MAX_SEARCH_LENGTH).collect())
         .unwrap_or_default();
     // 限制页码范围，防止过大的页码请求
-    let current_page = query.page.unwrap_or(1).max(1).min(MAX_PAGES);
+    let current_page = query.page.unwrap_or(1).clamp(1, MAX_PAGES);
     let tag_filter = query.tag.clone().unwrap_or_default();
 
     // 验证 tag_filter 是否为有效的数字ID（防止注入）
@@ -203,6 +203,7 @@ fn generate_pages(current: i64, total: i64) -> Vec<String> {
     pages
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render_home_page(
     messages: Vec<MessageView>,
     all_tags: Vec<TagSidebarItem>,

@@ -51,7 +51,7 @@ pub fn get_avatar_gradient(id: i64) -> &'static str {
         "from-purple-400 to-pink-500",
         "from-slate-400 to-zinc-500",
     ];
-    gradients[(id.abs() as usize) % gradients.len()]
+    gradients[id.unsigned_abs() as usize % gradients.len()]
 }
 
 pub fn get_safe_color(color: &str) -> String {

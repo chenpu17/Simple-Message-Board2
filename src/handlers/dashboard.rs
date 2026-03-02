@@ -101,6 +101,7 @@ pub async fn dashboard(repo: web::Data<Repository>) -> HttpResponse {
         .body(html)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render_dashboard(
     total_messages_ever: i64,
     current_message_count: i64,
