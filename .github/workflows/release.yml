@@ -210,7 +210,6 @@ jobs:
           #!/usr/bin/env node
 
           const path = require('path');
-          const os = require('os');
           const { spawn } = require('child_process');
           const fs = require('fs');
 
@@ -242,25 +241,15 @@ jobs:
             process.exit(1);
           }
 
-          // Use home directory for data storage (compatible with Node.js version)
-          // Priority: DATABASE_URL env > DATA_DIR env > ~/.message-board
-          const dataDir = process.env.DATA_DIR || path.join(os.homedir(), '.message-board');
-
-          // Ensure data directory exists
-          if (!fs.existsSync(dataDir)) {
-            fs.mkdirSync(dataDir, { recursive: true });
-          }
-
-          // Set environment variables
-          const env = {
-            ...process.env,
-            DATABASE_URL: process.env.DATABASE_URL || `sqlite:${path.join(dataDir, 'messages.db')}?mode=rwc`,
-          };
-
           // Get the package directory for static files
           const packageDir = __dirname;
 
-          // Spawn the binary with all arguments
+          // Pass through environment variables
+          // The Rust binary handles data-dir and database path internally
+          const env = { ...process.env };
+
+          // Spawn the binary with all arguments passed through
+          // This allows the Rust CLI to handle all commands and options
           const child = spawn(binaryPath, process.argv.slice(2), {
             stdio: 'inherit',
             env: env,
