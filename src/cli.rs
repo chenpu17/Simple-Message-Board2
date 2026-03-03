@@ -23,6 +23,12 @@ fn get_default_port() -> u16 {
         .unwrap_or(13478)
 }
 
+/// Get the default host
+fn get_default_host() -> String {
+    // Priority: HOST env var > 127.0.0.1
+    std::env::var("HOST").unwrap_or_else(|_| "127.0.0.1".to_string())
+}
+
 /// Message Board CLI - 简易留言板命令行工具
 #[derive(Parser, Debug)]
 #[command(name = "message-board")]
@@ -32,6 +38,10 @@ fn get_default_port() -> u16 {
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Commands>,
+
+    /// Host address to bind to (default: 127.0.0.1, can also set HOST env var)
+    #[arg(long, global = true, value_name = "HOST")]
+    pub host: Option<String>,
 
     /// Port to listen on (default: 13478, can also set PORT env var)
     #[arg(short, long, global = true)]
@@ -50,6 +60,10 @@ pub struct Cli {
 pub enum Commands {
     /// Start the message board service (default, runs as daemon)
     Start {
+        /// Host address to bind to (default: 127.0.0.1, can also set HOST env var)
+        #[arg(long, value_name = "HOST")]
+        host: Option<String>,
+
         /// Port to listen on (default: 13478, can also set PORT env var)
         #[arg(short, long)]
         port: Option<u16>,
@@ -72,6 +86,10 @@ pub enum Commands {
 
     /// Restart the message board service
     Restart {
+        /// Host address to bind to (default: 127.0.0.1, can also set HOST env var)
+        #[arg(long, value_name = "HOST")]
+        host: Option<String>,
+
         /// Port to listen on (default: 13478, can also set PORT env var)
         #[arg(short, long)]
         port: Option<u16>,
@@ -115,10 +133,22 @@ impl Cli {
     /// Get the effective command (defaults to Start if none specified)
     pub fn get_command(&self) -> Commands {
         self.command.clone().unwrap_or(Commands::Start {
+            host: self.host.clone(),
             port: self.port,
             data_dir: self.data_dir.clone(),
             foreground: self.foreground,
         })
+    }
+
+    /// Get effective host (CLI arg > HOST env var > default 127.0.0.1)
+    pub fn get_host(&self) -> String {
+        let default_host = get_default_host();
+        match &self.command {
+            Some(Commands::Start { host, .. }) => host.clone(),
+            Some(Commands::Restart { host, .. }) => host.clone(),
+            _ => self.host.clone(),
+        }
+        .unwrap_or(default_host)
     }
 
     /// Get effective port (CLI arg > PORT env var > default 13478)

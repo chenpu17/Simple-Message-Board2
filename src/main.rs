@@ -45,7 +45,7 @@ fn get_static_dir() -> PathBuf {
 }
 
 /// Run the server (called from daemon or foreground mode)
-async fn run_server(port: u16, data_dir: PathBuf) -> std::io::Result<()> {
+async fn run_server(host: String, port: u16, data_dir: PathBuf) -> std::io::Result<()> {
     // 初始化日志系统
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env())
@@ -73,7 +73,8 @@ async fn run_server(port: u16, data_dir: PathBuf) -> std::io::Result<()> {
     let static_dir = get_static_dir();
     tracing::info!("Static files directory: {}", static_dir.display());
 
-    tracing::info!("Server starting at http://127.0.0.1:{}", port);
+    let bind_addr = format!("{}:{}", host, port);
+    tracing::info!("Server starting at http://{}", bind_addr);
 
     HttpServer::new(move || {
         App::new()
@@ -88,16 +89,21 @@ async fn run_server(port: u16, data_dir: PathBuf) -> std::io::Result<()> {
             .route("/api/tags", web::get().to(handlers::api_tags))
             .service(fs::Files::new("/static", static_dir.clone()))
     })
-    .bind(("127.0.0.1", port))?
+    .bind(&bind_addr)?
     .run()
     .await
 }
 
 /// Start the daemon (spawn background process)
-fn start_daemon(port: u16, data_dir: PathBuf, daemon: &DaemonManager) -> std::io::Result<()> {
+fn start_daemon(
+    host: String,
+    port: u16,
+    data_dir: PathBuf,
+    daemon: &DaemonManager,
+) -> std::io::Result<()> {
     // Check if already running
     if let Some(pid) = daemon.read_pid()? {
-        print_already_running(pid, port);
+        print_already_running(pid, &host, port);
         return Ok(());
     }
 
@@ -118,6 +124,8 @@ fn start_daemon(port: u16, data_dir: PathBuf, daemon: &DaemonManager) -> std::io
         // Build the command with arguments
         let mut cmd = Command::new(&exe);
         cmd.arg("start")
+            .arg("--host")
+            .arg(&host)
             .arg("--port")
             .arg(port.to_string())
             .arg("--data-dir")
@@ -132,7 +140,7 @@ fn start_daemon(port: u16, data_dir: PathBuf, daemon: &DaemonManager) -> std::io
         if std::env::var("DATABASE_URL").is_ok() {
             // Pass through existing DATABASE_URL
             for (key, value) in std::env::vars() {
-                if key == "DATABASE_URL" || key == "PORT" || key == "DATA_DIR" {
+                if key == "DATABASE_URL" || key == "HOST" || key == "PORT" || key == "DATA_DIR" {
                     cmd.env(key, value);
                 }
             }
@@ -150,11 +158,11 @@ fn start_daemon(port: u16, data_dir: PathBuf, daemon: &DaemonManager) -> std::io
 
         // Wait for the process to be ready (listening on port)
         // Timeout after 5 seconds
-        let ready = daemon.wait_for_process_ready(pid, port, 5000);
+        let ready = daemon.wait_for_process_ready(pid, &host, port, 5000);
 
         if ready {
             daemon.write_pid(pid)?;
-            print_start_success(pid, port, &data_dir, &daemon.log_file());
+            print_start_success(pid, &host, port, &data_dir, &daemon.log_file());
         } else {
             // Process failed to start
             // Check if process is still running
@@ -170,7 +178,7 @@ fn start_daemon(port: u16, data_dir: PathBuf, daemon: &DaemonManager) -> std::io
                     "Check the log file for details: {}",
                     daemon.log_file().display()
                 );
-                print_start_success(pid, port, &data_dir, &daemon.log_file());
+                print_start_success(pid, &host, port, &data_dir, &daemon.log_file());
             } else {
                 // Process exited
                 print_start_failure(&daemon.log_file());
@@ -185,22 +193,23 @@ fn start_daemon(port: u16, data_dir: PathBuf, daemon: &DaemonManager) -> std::io
         println!("Note: Daemon mode on Windows runs in the current console.");
         println!("Use Ctrl+C to stop the service.");
         println!();
-        run_server_blocking(port, data_dir)?;
+        run_server_blocking(host, port, data_dir)?;
     }
 
     Ok(())
 }
 
 /// Run the server in blocking mode
-fn run_server_blocking(port: u16, data_dir: PathBuf) -> std::io::Result<()> {
+fn run_server_blocking(host: String, port: u16, data_dir: PathBuf) -> std::io::Result<()> {
     // Use tokio runtime
     let rt = tokio::runtime::Runtime::new()?;
-    rt.block_on(run_server(port, data_dir))
+    rt.block_on(run_server(host, port, data_dir))
 }
 
 fn main() -> std::io::Result<()> {
     let cli = Cli::parse();
     let command = cli.get_command();
+    let host = cli.get_host();
     let port = cli.get_port();
     let data_dir = cli.get_data_dir();
     let foreground = cli.get_foreground();
@@ -211,14 +220,14 @@ fn main() -> std::io::Result<()> {
         Commands::Start { .. } => {
             if foreground {
                 // Run in foreground
-                println!("Starting message board on port {}...", port);
+                println!("Starting message board on {}:{}...", host, port);
                 println!("Data directory: {}", data_dir.display());
-                println!("Access at http://localhost:{}", port);
+                println!("Access at http://{}:{}", host, port);
                 println!();
-                run_server_blocking(port, data_dir)?;
+                run_server_blocking(host, port, data_dir)?;
             } else {
                 // Run as daemon
-                start_daemon(port, data_dir, &daemon)?;
+                start_daemon(host, port, data_dir, &daemon)?;
             }
         }
         Commands::Stop { .. } => match daemon.read_pid()? {
@@ -248,13 +257,13 @@ fn main() -> std::io::Result<()> {
             // Start new instance
             println!("Starting new instance...");
             if foreground {
-                println!("Starting message board on port {}...", port);
+                println!("Starting message board on {}:{}...", host, port);
                 println!("Data directory: {}", data_dir.display());
-                println!("Access at http://localhost:{}", port);
+                println!("Access at http://{}:{}", host, port);
                 println!();
-                run_server_blocking(port, data_dir)?;
+                run_server_blocking(host, port, data_dir)?;
             } else {
-                start_daemon(port, data_dir, &daemon)?;
+                start_daemon(host, port, data_dir, &daemon)?;
             }
         }
         Commands::Status { .. } => {

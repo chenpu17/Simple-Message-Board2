@@ -299,7 +299,7 @@ impl DaemonManager {
     }
 
     /// Wait for the process to start and verify it's listening
-    pub fn wait_for_process_ready(&self, pid: u32, port: u16, timeout_ms: u64) -> bool {
+    pub fn wait_for_process_ready(&self, pid: u32, host: &str, port: u16, timeout_ms: u64) -> bool {
         let start = std::time::Instant::now();
 
         while start.elapsed().as_millis() < timeout_ms as u128 {
@@ -309,7 +309,7 @@ impl DaemonManager {
             }
 
             // Try to connect to the port
-            if std::net::TcpStream::connect(format!("127.0.0.1:{}", port)).is_ok() {
+            if std::net::TcpStream::connect(format!("{}:{}", host, port)).is_ok() {
                 return true;
             }
 
@@ -359,14 +359,15 @@ pub fn print_logs(daemon: &DaemonManager, lines: usize) {
 }
 
 /// Print the start success message
-pub fn print_start_success(pid: u32, port: u16, data_dir: &Path, log_file: &Path) {
+pub fn print_start_success(pid: u32, host: &str, port: u16, data_dir: &Path, log_file: &Path) {
     println!("Message board started successfully!");
     println!("PID: {}", pid);
+    println!("Host: {}", host);
     println!("Port: {}", port);
     println!("Data directory: {}", data_dir.display());
     println!("Log file: {}", log_file.display());
     println!();
-    println!("Access at http://localhost:{}", port);
+    println!("Access at http://{}:{}", host, port);
     println!();
     println!("Use 'message-board stop' to stop the service");
     println!("Use 'message-board logs' to view logs");
@@ -378,9 +379,9 @@ pub fn print_stop_success(pid: u32) {
 }
 
 /// Print the already running message
-pub fn print_already_running(pid: u32, port: u16) {
+pub fn print_already_running(pid: u32, host: &str, port: u16) {
     println!("Message board is already running (PID: {})", pid);
-    println!("Access at http://localhost:{}", port);
+    println!("Access at http://{}:{}", host, port);
 }
 
 /// Print the start failure message
