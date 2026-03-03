@@ -92,11 +92,14 @@ message-board
 ### 2. Start the server / 启动服务
 
 ```bash
-# Using npm / 使用 npm
-message-board
+# Start as daemon (background) / 作为守护进程启动（后台）
+message-board start
+
+# Or start in foreground / 或前台启动
+message-board start --foreground
 
 # Or from source / 或从源码
-cargo run
+cargo run -- start
 ```
 
 Server will start at http://127.0.0.1:13478
@@ -138,6 +141,68 @@ Server will start at http://127.0.0.1:13478
 
 ---
 
+## CLI Commands / CLI 命令
+
+The server supports various CLI commands for daemon management:
+
+服务器支持多种 CLI 命令用于守护进程管理：
+
+```bash
+# Start as daemon (default) / 作为守护进程启动（默认）
+message-board start
+
+# Start in foreground / 前台启动
+message-board start --foreground
+# or / 或
+message-board start -f
+
+# Stop daemon / 停止守护进程
+message-board stop
+
+# Restart daemon / 重启守护进程
+message-board restart
+
+# Check status / 查看状态
+message-board status
+
+# View logs / 查看日志
+message-board logs
+message-board logs --lines 100
+
+# Show version / 显示版本
+message-board version
+```
+
+### CLI Options / CLI 选项
+
+| Option | Description |
+|--------|-------------|
+| `--host <HOST>` | Host address to bind (default: 127.0.0.1) |
+| `-p, --port <PORT>` | Port to listen on (default: 13478) |
+| `-d, --data-dir <DIR>` | Data directory for database and logs |
+| `-f, --foreground` | Run in foreground (not as daemon) |
+
+### CLI Examples / CLI 示例
+
+```bash
+# Start on custom port / 在自定义端口启动
+message-board start --port 8080
+
+# Start on specific host / 在指定主机启动
+message-board start --host 0.0.0.0 --port 80
+
+# Start with custom data directory / 使用自定义数据目录启动
+message-board start --data-dir /var/lib/message-board
+
+# Run in foreground (for Docker/systemd) / 前台运行（用于 Docker/systemd）
+message-board start --foreground
+
+# Start with all options / 使用所有选项启动
+message-board start --host 0.0.0.0 --port 8080 --data-dir /data --foreground
+```
+
+---
+
 ## Configuration / 配置
 
 Environment variables / 环境变量:
@@ -146,6 +211,7 @@ Environment variables / 环境变量:
 |----------|---------|-------------|
 | `DATABASE_URL` | `sqlite:~/.message-board/messages.db?mode=rwc` | SQLite connection string |
 | `DATA_DIR` | `~/.message-board` | Data directory for database storage |
+| `HOST` | `127.0.0.1` | Host address to bind |
 | `PORT` | `13478` | Server port |
 
 ### Example / 示例
@@ -153,6 +219,9 @@ Environment variables / 环境变量:
 ```bash
 # Custom port / 自定义端口
 PORT=8080 message-board
+
+# Custom host and port / 自定义主机和端口
+HOST=0.0.0.0 PORT=80 message-board
 
 # Custom data directory / 自定义数据目录
 DATA_DIR=/path/to/data message-board
@@ -179,6 +248,8 @@ DATABASE_URL="sqlite:/data/messages.db?mode=rwc" message-board
 ├── src/
 │   ├── main.rs          # Entry point / 入口
 │   ├── lib.rs           # Library exports / 库导出
+│   ├── cli.rs           # CLI argument parsing / CLI 参数解析
+│   ├── daemon.rs        # Daemon management / 守护进程管理
 │   ├── config.rs        # Configuration constants / 配置常量
 │   ├── utils.rs         # Utility functions / 工具函数
 │   ├── db/
