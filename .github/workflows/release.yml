@@ -46,24 +46,28 @@ jobs:
             os: macos-latest
             artifact_name: message_board
             asset_name: message_board-darwin-arm64
+            use_cross: false
 
           # Linux x64 (musl for static linking, no GLIBC dependency)
           - target: x86_64-unknown-linux-musl
             os: ubuntu-latest
             artifact_name: message_board
             asset_name: message_board-linux-x64
+            use_cross: false
 
-          # Linux ARM64 (musl for static linking, no GLIBC dependency)
+          # Linux ARM64 (musl for static linking, use cross for proper toolchain)
           - target: aarch64-unknown-linux-musl
             os: ubuntu-latest
             artifact_name: message_board
             asset_name: message_board-linux-arm64
+            use_cross: true
 
           # Windows x64
           - target: x86_64-pc-windows-msvc
             os: windows-latest
             artifact_name: message_board.exe
             asset_name: message_board-win32-x64.exe
+            use_cross: false
 
     steps:
       - uses: actions/checkout@v4
@@ -79,14 +83,18 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y musl-tools
 
-      - name: Install cross-compilation tools (Linux ARM64 musl)
-        if: matrix.target == 'aarch64-unknown-linux-musl'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu musl-tools
-          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+      - name: Install cross
+        if: matrix.use_cross
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cross
 
-      - name: Build
+      - name: Build with cross
+        if: matrix.use_cross
+        run: cross build --release --target ${{ matrix.target }}
+
+      - name: Build with cargo
+        if: "!matrix.use_cross"
         run: cargo build --release --target ${{ matrix.target }}
 
       - name: Package binaries
