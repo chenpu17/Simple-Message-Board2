@@ -76,16 +76,17 @@ cargo build --release
 
 ### 1. Migrate from Node.js version / 从 Node.js 版本迁移
 
-If you have an existing database from the Node.js version:
+If you have an existing database from the Node.js version, the Rust version uses the **same data directory** (`~/.message-board/`), so no migration is needed!
 
-如果你有 Node.js 版本的数据库：
+如果你有 Node.js 版本的数据库，Rust 版本使用**相同的数据目录** (`~/.message-board/`)，无需迁移！
 
 ```bash
-# Copy the database file / 复制数据库文件
-cp /path/to/original/data/messages.db ./.message-board-data/
+# Data is stored in the same location / 数据存储在相同位置
+# ~/.message-board/messages.db
 
-# Or set environment variable / 或设置环境变量
-export DATABASE_URL="sqlite:/path/to/your/messages.db?mode=rwc"
+# Just install and run! / 直接安装运行即可！
+npm install -g simple-message-board
+message-board
 ```
 
 ### 2. Start the server / 启动服务
@@ -143,7 +144,8 @@ Environment variables / 环境变量:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DATABASE_URL` | `sqlite:.message-board-data/messages.db?mode=rwc` | SQLite connection string |
+| `DATABASE_URL` | `sqlite:~/.message-board/messages.db?mode=rwc` | SQLite connection string |
+| `DATA_DIR` | `~/.message-board` | Data directory for database storage |
 | `PORT` | `13478` | Server port |
 
 ### Example / 示例
@@ -151,6 +153,9 @@ Environment variables / 环境变量:
 ```bash
 # Custom port / 自定义端口
 PORT=8080 message-board
+
+# Custom data directory / 自定义数据目录
+DATA_DIR=/path/to/data message-board
 
 # Custom database path / 自定义数据库路径
 DATABASE_URL="sqlite:/data/messages.db?mode=rwc" message-board
@@ -228,10 +233,11 @@ Compared to the Node.js version / 相比 Node.js 版本:
 
 ### From Node.js Version / 从 Node.js 版本迁移
 
-1. **Database / 数据库**: Fully compatible, no migration needed / 完全兼容，无需迁移
-2. **Static Files / 静态文件**: Copy `public/` folder / 复制 `public/` 目录
+1. **Database / 数据库**: Fully compatible! Same data directory (`~/.message-board/`), no migration needed / 完全兼容！相同数据目录，无需迁移
+2. **Static Files / 静态文件**: Included in npm package / 包含在 npm 包中
 3. **Templates / 模板**: Compatible with original HTML / 兼容原有 HTML
 4. **API / 接口**: 100% compatible / 100% 兼容
+5. **Command / 命令**: Same command `message-board` / 相同命令 `message-board`
 
 ---
 

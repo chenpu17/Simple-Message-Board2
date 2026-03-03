@@ -2,3 +2,4 @@
 /data/*.db
 .DS_Store
 提示词记录.md
+.message-board-data/
