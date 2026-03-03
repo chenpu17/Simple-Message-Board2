@@ -1,7 +1,7 @@
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufRead, Write};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::time::Duration;
 
 /// Process identifier with verification info
@@ -112,10 +112,11 @@ impl DaemonManager {
     /// Check if a process with the given PID is running
     #[cfg(unix)]
     pub fn is_process_running(&self, pid: u32) -> bool {
-        // Use kill -0 to check if process exists
+        // Use kill -0 to check if process exists (suppress stderr)
         Command::new("kill")
             .arg("-0")
             .arg(pid.to_string())
+            .stderr(Stdio::null())
             .status()
             .map(|s| s.success())
             .unwrap_or(false)
