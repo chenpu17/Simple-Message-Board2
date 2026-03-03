@@ -2,6 +2,7 @@ use actix_files as fs;
 use actix_web::{web, App, HttpServer};
 use clap::Parser;
 use message_board::cli::{Cli, Commands};
+use message_board::config;
 use message_board::daemon::{
     print_already_running, print_logs, print_start_failure, print_start_success, print_status,
     print_stop_success, DaemonManager,
@@ -261,6 +262,9 @@ fn main() -> std::io::Result<()> {
         }
         Commands::Logs { lines, .. } => {
             print_logs(&daemon, lines);
+        }
+        Commands::Version => {
+            println!("simple-message-board v{}", config::VERSION);
         }
     }
 

@@ -102,6 +102,9 @@ pub enum Commands {
         #[arg(short, long, default_value = "50")]
         lines: usize,
     },
+
+    /// Show version information
+    Version,
 }
 
 impl Cli {
@@ -138,6 +141,7 @@ impl Cli {
             Some(Commands::Restart { data_dir, .. }) => data_dir.clone(),
             Some(Commands::Status { data_dir }) => data_dir.clone(),
             Some(Commands::Logs { data_dir, .. }) => data_dir.clone(),
+            Some(Commands::Version) => None,
             None => self.data_dir.clone(),
         };
 
