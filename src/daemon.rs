@@ -302,6 +302,22 @@ impl DaemonManager {
     pub fn wait_for_process_ready(&self, pid: u32, host: &str, port: u16, timeout_ms: u64) -> bool {
         let start = std::time::Instant::now();
 
+        // When binding to 0.0.0.0 or ::, connect to localhost for testing
+        let connect_host = if host == "0.0.0.0" {
+            "127.0.0.1"
+        } else if host == "::" {
+            "::1"
+        } else {
+            host
+        };
+
+        // Format address with proper IPv6 handling
+        let addr = if connect_host.contains(':') && !connect_host.starts_with('[') {
+            format!("[{}]:{}", connect_host, port)
+        } else {
+            format!("{}:{}", connect_host, port)
+        };
+
         while start.elapsed().as_millis() < timeout_ms as u128 {
             // Check if process is still running
             if !self.is_process_running(pid) {
@@ -309,7 +325,7 @@ impl DaemonManager {
             }
 
             // Try to connect to the port
-            if std::net::TcpStream::connect(format!("{}:{}", host, port)).is_ok() {
+            if std::net::TcpStream::connect(&addr).is_ok() {
                 return true;
             }
 

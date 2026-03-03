@@ -18,6 +18,26 @@ fn get_current_exe() -> std::io::Result<PathBuf> {
     std::env::current_exe()
 }
 
+/// Format bind address with proper IPv6 handling
+/// IPv6 addresses need brackets (e.g., [::1]:8080)
+fn format_bind_address(host: &str, port: u16) -> String {
+    if host.contains(':') && !host.starts_with('[') {
+        // IPv6 address without brackets - add them
+        format!("[{}]:{}", host, port)
+    } else {
+        format!("{}:{}", host, port)
+    }
+}
+
+/// Check if binding to all interfaces and warn user
+fn check_bind_security(host: &str) {
+    if host == "0.0.0.0" || host == "::" {
+        println!("Warning: Binding to all network interfaces ({}).", host);
+        println!("         Ensure proper firewall rules are in place.");
+        println!();
+    }
+}
+
 /// Determine the static files directory
 /// Priority:
 /// 1. ./public (current working directory) - for development and npm package
@@ -73,7 +93,7 @@ async fn run_server(host: String, port: u16, data_dir: PathBuf) -> std::io::Resu
     let static_dir = get_static_dir();
     tracing::info!("Static files directory: {}", static_dir.display());
 
-    let bind_addr = format!("{}:{}", host, port);
+    let bind_addr = format_bind_address(&host, port);
     tracing::info!("Server starting at http://{}", bind_addr);
 
     HttpServer::new(move || {
@@ -218,6 +238,7 @@ fn main() -> std::io::Result<()> {
 
     match command {
         Commands::Start { .. } => {
+            check_bind_security(&host);
             if foreground {
                 // Run in foreground
                 println!("Starting message board on {}:{}...", host, port);
@@ -256,6 +277,7 @@ fn main() -> std::io::Result<()> {
 
             // Start new instance
             println!("Starting new instance...");
+            check_bind_security(&host);
             if foreground {
                 println!("Starting message board on {}:{}...", host, port);
                 println!("Data directory: {}", data_dir.display());
