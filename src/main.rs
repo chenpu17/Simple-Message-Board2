@@ -3,8 +3,8 @@ use actix_web::{web, App, HttpServer};
 use clap::Parser;
 use message_board::cli::{Cli, Commands};
 use message_board::daemon::{
-    print_already_running, print_logs, print_start_success, print_status, print_stop_success,
-    DaemonManager,
+    print_already_running, print_logs, print_start_failure, print_start_success, print_status,
+    print_stop_success, DaemonManager,
 };
 use message_board::db::Repository;
 use message_board::handlers;
@@ -51,6 +51,7 @@ async fn run_server(port: u16, data_dir: PathBuf) -> std::io::Result<()> {
         .init();
 
     // 初始化数据库
+    // Priority: DATABASE_URL env > data_dir/messages.db
     let database_url = std::env::var("DATABASE_URL")
         .unwrap_or_else(|_| format!("sqlite:{}?mode=rwc", data_dir.join("messages.db").display()));
 
@@ -113,29 +114,68 @@ fn start_daemon(port: u16, data_dir: PathBuf, daemon: &DaemonManager) -> std::io
             .append(true)
             .open(&log_file)?;
 
-        let child = Command::new(&exe)
-            .arg("start")
+        // Build the command with arguments
+        let mut cmd = Command::new(&exe);
+        cmd.arg("start")
             .arg("--port")
             .arg(port.to_string())
             .arg("--data-dir")
             .arg(&data_dir)
             .arg("--foreground")
-            .env(
-                "DATABASE_URL",
-                format!("sqlite:{}?mode=rwc", data_dir.join("messages.db").display()),
-            )
             .stdin(Stdio::null())
             .stdout(log.try_clone()?)
-            .stderr(log)
-            .spawn()?;
+            .stderr(log);
+
+        // Pass through DATABASE_URL if set, otherwise compute from data_dir
+        // This ensures consistent behavior between foreground and daemon modes
+        if std::env::var("DATABASE_URL").is_ok() {
+            // Pass through existing DATABASE_URL
+            for (key, value) in std::env::vars() {
+                if key == "DATABASE_URL" || key == "PORT" || key == "DATA_DIR" {
+                    cmd.env(key, value);
+                }
+            }
+        } else {
+            // Set DATABASE_URL based on data_dir
+            cmd.env(
+                "DATABASE_URL",
+                format!("sqlite:{}?mode=rwc", data_dir.join("messages.db").display()),
+            );
+        }
+
+        let child = cmd.spawn()?;
 
         let pid = child.id();
-        daemon.write_pid(pid)?;
 
-        // Small delay to ensure process starts
-        std::thread::sleep(std::time::Duration::from_millis(100));
+        // Wait for the process to be ready (listening on port)
+        // Timeout after 5 seconds
+        let ready = daemon.wait_for_process_ready(pid, port, 5000);
 
-        print_start_success(pid, port, &data_dir, &daemon.log_file());
+        if ready {
+            daemon.write_pid(pid)?;
+            print_start_success(pid, port, &data_dir, &daemon.log_file());
+        } else {
+            // Process failed to start
+            // Check if process is still running
+            if daemon.is_process_running(pid) {
+                // Process is running but not responding on port - might be slow
+                // Still write PID and report success with warning
+                daemon.write_pid(pid)?;
+                println!(
+                    "Warning: Process started but not responding on port {} yet.",
+                    port
+                );
+                println!(
+                    "Check the log file for details: {}",
+                    daemon.log_file().display()
+                );
+                print_start_success(pid, port, &data_dir, &daemon.log_file());
+            } else {
+                // Process exited
+                print_start_failure(&daemon.log_file());
+                return Err(std::io::Error::other("Process failed to start"));
+            }
+        }
     }
 
     #[cfg(windows)]

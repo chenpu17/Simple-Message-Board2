@@ -1,6 +1,28 @@
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
+/// Get the default data directory (~/.message-board)
+fn get_default_data_dir() -> PathBuf {
+    // Priority: DATA_DIR env var > ~/.message-board
+    if let Ok(data_dir) = std::env::var("DATA_DIR") {
+        return PathBuf::from(data_dir);
+    }
+
+    // Use home directory (compatible with Node.js version)
+    dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".message-board")
+}
+
+/// Get the default port
+fn get_default_port() -> u16 {
+    // Priority: PORT env var > 13478
+    std::env::var("PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(13478)
+}
+
 /// Message Board CLI - 简易留言板命令行工具
 #[derive(Parser, Debug)]
 #[command(name = "message-board")]
@@ -11,11 +33,11 @@ pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Commands>,
 
-    /// Port to listen on
-    #[arg(short, long, global = true, default_value = "13478")]
-    pub port: u16,
+    /// Port to listen on (default: 13478, can also set PORT env var)
+    #[arg(short, long, global = true)]
+    pub port: Option<u16>,
 
-    /// Data directory for database and logs
+    /// Data directory for database and logs (default: ~/.message-board, can also set DATA_DIR env var)
     #[arg(short = 'd', long, global = true, value_name = "DIR")]
     pub data_dir: Option<PathBuf>,
 
@@ -28,11 +50,11 @@ pub struct Cli {
 pub enum Commands {
     /// Start the message board service (default, runs as daemon)
     Start {
-        /// Port to listen on
-        #[arg(short, long, default_value = "13478")]
-        port: u16,
+        /// Port to listen on (default: 13478, can also set PORT env var)
+        #[arg(short, long)]
+        port: Option<u16>,
 
-        /// Data directory for database and logs
+        /// Data directory for database and logs (default: ~/.message-board, can also set DATA_DIR env var)
         #[arg(short = 'd', long, value_name = "DIR")]
         data_dir: Option<PathBuf>,
 
@@ -43,18 +65,18 @@ pub enum Commands {
 
     /// Stop the message board service
     Stop {
-        /// Data directory for database and logs
+        /// Data directory for database and logs (default: ~/.message-board, can also set DATA_DIR env var)
         #[arg(short = 'd', long, value_name = "DIR")]
         data_dir: Option<PathBuf>,
     },
 
     /// Restart the message board service
     Restart {
-        /// Port to listen on
-        #[arg(short, long, default_value = "13478")]
-        port: u16,
+        /// Port to listen on (default: 13478, can also set PORT env var)
+        #[arg(short, long)]
+        port: Option<u16>,
 
-        /// Data directory for database and logs
+        /// Data directory for database and logs (default: ~/.message-board, can also set DATA_DIR env var)
         #[arg(short = 'd', long, value_name = "DIR")]
         data_dir: Option<PathBuf>,
 
@@ -65,14 +87,14 @@ pub enum Commands {
 
     /// Show service status
     Status {
-        /// Data directory for database and logs
+        /// Data directory for database and logs (default: ~/.message-board, can also set DATA_DIR env var)
         #[arg(short = 'd', long, value_name = "DIR")]
         data_dir: Option<PathBuf>,
     },
 
     /// Show recent logs
     Logs {
-        /// Data directory for database and logs
+        /// Data directory for database and logs (default: ~/.message-board, can also set DATA_DIR env var)
         #[arg(short = 'd', long, value_name = "DIR")]
         data_dir: Option<PathBuf>,
 
@@ -96,17 +118,20 @@ impl Cli {
         })
     }
 
-    /// Get effective port
+    /// Get effective port (CLI arg > PORT env var > default 13478)
     pub fn get_port(&self) -> u16 {
+        let default_port = get_default_port();
         match &self.command {
-            Some(Commands::Start { port, .. }) => *port,
-            Some(Commands::Restart { port, .. }) => *port,
+            Some(Commands::Start { port, .. }) => port.or(Some(default_port)),
+            Some(Commands::Restart { port, .. }) => port.or(Some(default_port)),
             _ => self.port,
         }
+        .unwrap_or(default_port)
     }
 
-    /// Get effective data directory
+    /// Get effective data directory (CLI arg > DATA_DIR env var > ~/.message-board)
     pub fn get_data_dir(&self) -> PathBuf {
+        let default_dir = get_default_data_dir();
         let dir = match &self.command {
             Some(Commands::Start { data_dir, .. }) => data_dir.clone(),
             Some(Commands::Stop { data_dir }) => data_dir.clone(),
@@ -116,11 +141,7 @@ impl Cli {
             None => self.data_dir.clone(),
         };
 
-        dir.unwrap_or_else(|| {
-            dirs::data_local_dir()
-                .unwrap_or_else(|| PathBuf::from("."))
-                .join(".message-board")
-        })
+        dir.unwrap_or(default_dir)
     }
 
     /// Get effective foreground flag
@@ -159,18 +180,21 @@ mod tests {
     fn test_start_command_default() {
         let cli = Cli::try_parse_from(["message-board", "start"]).unwrap();
         match cli.get_command() {
-            Commands::Start { port, .. } => assert_eq!(port, 13478),
+            Commands::Start { port, .. } => assert!(port.is_none()), // Uses env/default
             _ => panic!("Expected Start command"),
         }
+        // get_port() should return the default
+        assert_eq!(cli.get_port(), 13478);
     }
 
     #[test]
     fn test_start_command_with_port() {
         let cli = Cli::try_parse_from(["message-board", "start", "-p", "8080"]).unwrap();
         match cli.get_command() {
-            Commands::Start { port, .. } => assert_eq!(port, 8080),
+            Commands::Start { port, .. } => assert_eq!(port, Some(8080)),
             _ => panic!("Expected Start command"),
         }
+        assert_eq!(cli.get_port(), 8080);
     }
 
     #[test]
@@ -236,5 +260,18 @@ mod tests {
             Commands::Logs { lines, .. } => assert_eq!(lines, 100),
             _ => panic!("Expected Logs command"),
         }
+    }
+
+    #[test]
+    fn test_default_data_dir_uses_home() {
+        let dir = get_default_data_dir();
+        // Should end with .message-board and be in home directory
+        assert!(dir.ends_with(".message-board"));
+    }
+
+    #[test]
+    fn test_default_port() {
+        let port = get_default_port();
+        assert_eq!(port, 13478);
     }
 }
