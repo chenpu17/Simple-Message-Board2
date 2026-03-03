@@ -151,7 +151,7 @@ jobs:
           VERSION=${GITHUB_REF#refs/tags/v}
           cat > npm-package/package.json << EOF
           {
-            "name": "simple-message-board-server",
+            "name": "simple-message-board",
             "version": "${VERSION}",
             "description": "A simple message board server - 简易留言板后端服务",
             "main": "index.js",
