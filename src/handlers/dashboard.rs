@@ -646,6 +646,7 @@ fn render_daily_ip_stats(stats: &[DailyIpStatItem], unique_source_ip_count: i64)
         })
         .collect::<Vec<_>>()
         .join("");
+    let unique_ip_badge = format!("{} 个唯一 IP", unique_source_ip_count);
 
     format!(
         r#"<section class="rounded-xl border border-border bg-card/90 p-5 shadow-sm backdrop-blur">
@@ -673,7 +674,7 @@ fn render_daily_ip_stats(stats: &[DailyIpStatItem], unique_source_ip_count: i64)
             </div>
         </section>"#,
         unique_source_ip_count,
-        format!("{} 个唯一 IP", unique_source_ip_count),
+        unique_ip_badge,
         rows
     )
 }

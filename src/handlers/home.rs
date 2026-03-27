@@ -849,6 +849,7 @@ fn render_replies_section(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render_pagination(
     current_page: i64,
     page_size: i64,
