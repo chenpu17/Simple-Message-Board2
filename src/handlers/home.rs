@@ -1,4 +1,6 @@
-use crate::config::{MAX_MESSAGES, MAX_PAGES, MAX_SEARCH_LENGTH, PAGE_SIZE, VERSION, VERSION_DATE};
+use crate::config::{
+    MAX_MESSAGES, MAX_PAGES, MAX_SEARCH_LENGTH, PAGE_SIZE_OPTIONS, VERSION, VERSION_DATE,
+};
 use crate::db::Repository;
 use crate::utils::*;
 use actix_web::{web, HttpResponse};
@@ -8,6 +10,7 @@ use serde::Deserialize;
 pub struct QueryParams {
     q: Option<String>,
     page: Option<i64>,
+    page_size: Option<i64>,
     tag: Option<String>,
 }
 
@@ -49,8 +52,10 @@ pub async fn home(repo: web::Data<Repository>, query: web::Query<QueryParams>) -
         .as_deref()
         .map(|s| s.chars().take(MAX_SEARCH_LENGTH).collect())
         .unwrap_or_default();
+    let page_size = normalize_page_size(query.page_size);
+    let max_pages = ((MAX_MESSAGES + page_size - 1) / page_size).max(1);
     // 限制页码范围，防止过大的页码请求
-    let current_page = query.page.unwrap_or(1).clamp(1, MAX_PAGES);
+    let current_page = query.page.unwrap_or(1).clamp(1, max_pages.min(MAX_PAGES));
     let tag_filter = query.tag.clone().unwrap_or_default();
 
     // 验证 tag_filter 是否为有效的数字ID（防止注入）
@@ -62,13 +67,13 @@ pub async fn home(repo: web::Data<Repository>, query: web::Query<QueryParams>) -
 
     // 获取留言（使用批量查询避免N+1）
     let messages = if !search_term.is_empty() {
-        repo.search_messages_with_tags_batch(&search_term, current_page, PAGE_SIZE)
+        repo.search_messages_with_tags_batch(&search_term, current_page, page_size)
             .await
     } else if let Some(tag_id) = tag_id_opt {
-        repo.get_messages_by_tag_with_tags_batch(tag_id, current_page, PAGE_SIZE)
+        repo.get_messages_by_tag_with_tags_batch(tag_id, current_page, page_size)
             .await
     } else {
-        repo.get_messages_with_tags_batch(current_page, PAGE_SIZE)
+        repo.get_messages_with_tags_batch(current_page, page_size)
             .await
     };
 
@@ -91,8 +96,8 @@ pub async fn home(repo: web::Data<Repository>, query: web::Query<QueryParams>) -
     let total_messages_ever = std::cmp::max(total_messages_ever, total_messages);
 
     // 计算分页，限制最大页数
-    let total_pages = ((total_messages as f64) / (PAGE_SIZE as f64)).ceil() as i64;
-    let total_pages = total_pages.min(MAX_PAGES);
+    let total_pages = ((total_messages + page_size - 1) / page_size).max(1);
+    let total_pages = total_pages.min(max_pages.min(MAX_PAGES));
 
     // 获取所有标签
     let all_tags = repo.get_tags_with_count().await.unwrap_or_default();
@@ -162,6 +167,7 @@ pub async fn home(repo: web::Data<Repository>, query: web::Query<QueryParams>) -
         tag_sidebar,
         search_term,
         current_page,
+        page_size,
         total_pages,
         total_messages,
         total_messages_ever,
@@ -209,6 +215,7 @@ fn render_home_page(
     all_tags: Vec<TagSidebarItem>,
     search_term: String,
     current_page: i64,
+    page_size: i64,
     total_pages: i64,
     total_messages: i64,
     total_messages_ever: i64,
@@ -218,11 +225,12 @@ fn render_home_page(
     let prev_page = (current_page - 1).max(1);
     let next_page = (current_page + 1).min(total_pages);
 
-    let tag_sidebar_html = render_tag_sidebar(&all_tags, &tag_filter);
-    let messages_html = render_messages(&messages, current_page, &search_term, &tag_filter);
+    let tag_sidebar_html = render_tag_sidebar(&all_tags, &tag_filter, page_size);
+    let messages_html = render_messages(&messages, current_page, page_size, &search_term, &tag_filter);
     let pagination_html = if total_pages > 1 {
         render_pagination(
             current_page,
+            page_size,
             total_pages,
             &search_term,
             &tag_filter,
@@ -247,13 +255,18 @@ fn render_home_page(
     };
 
     let clear_search = if !search_term.is_empty() {
-        r#"<a href="/" class="inline-flex h-10 items-center justify-center rounded-md border border-input bg-background px-4 text-sm font-medium transition hover:bg-accent hover:text-accent-foreground">清除</a>"#.to_string()
+        format!(
+            r#"<a href="/?page_size={}" class="inline-flex h-10 items-center justify-center rounded-md border border-input bg-background px-4 text-sm font-medium transition hover:bg-accent hover:text-accent-foreground">清除</a>"#,
+            page_size
+        )
     } else {
         String::new()
     };
 
+    let page_size_selector = render_page_size_selector(page_size);
+
     let toolbar = format!(
-        r#"{}{}{}{}{}{}{}{}{}{}{}"#,
+        r#"{}{}{}{}{}{}{}{}{}{}{}{}"#,
         toolbar_button(
             "heading-1",
             r#"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12h8"/><path d="M4 18V6"/><path d="M12 18V6"/><path d="m17 12 3-2v8"/></svg>"#
@@ -288,6 +301,10 @@ fn render_home_page(
         toolbar_button(
             "code",
             r#"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>"#
+        ),
+        toolbar_button(
+            "code-block",
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 18H3"/><path d="M10 6H3"/><path d="M21 12H3"/><path d="m18 6 3 6-3 6"/></svg>"#
         ),
     );
 
@@ -407,11 +424,13 @@ fn render_home_page(
                         {}
                     </div>
                     <form action="/" method="get" class="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-3">
+                        <input type="hidden" name="tag" value="{}">
                         <div class="flex flex-1 items-center gap-2 rounded-md border border-input bg-background px-4 py-2 text-sm text-foreground shadow-sm transition-all focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/40 hover:border-ring/50">
                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="opacity-50"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
                             <input type="search" name="q" value="{}" placeholder="输入关键字" class="flex-1 bg-transparent text-sm placeholder:text-muted-foreground/80 focus:outline-none">
                         </div>
                         <div class="flex items-center gap-2">
+                            {}
                             <button type="submit" class="inline-flex h-10 items-center justify-center rounded-md bg-secondary px-4 text-sm font-medium text-secondary-foreground shadow-sm transition hover:bg-secondary/80">搜索</button>
                             {}
                         </div>
@@ -434,7 +453,7 @@ fn render_home_page(
 </body>
 </html>"#,
         escape_attribute(&search_term),
-        PAGE_SIZE,
+        page_size,
         escape_attribute(&tag_filter),
         tag_sidebar_html,
         VERSION,
@@ -444,7 +463,9 @@ fn render_home_page(
         total_messages_ever,
         toolbar,
         search_display,
+        escape_attribute(&tag_filter),
         escape_attribute(&search_term),
+        page_size_selector,
         clear_search,
         messages_html,
         pagination_html,
@@ -462,15 +483,18 @@ fn toolbar_divider() -> String {
     r#"<div class="mx-1 h-4 w-[1px] bg-border"></div>"#.to_string()
 }
 
-fn render_tag_sidebar(tags: &[TagSidebarItem], tag_filter: &str) -> String {
+fn render_tag_sidebar(tags: &[TagSidebarItem], tag_filter: &str, page_size: i64) -> String {
     if tags.is_empty() {
         return String::new();
     }
 
     let clear_link = if !tag_filter.is_empty() {
-        r#"<a href="/" class="text-[10px] text-muted-foreground hover:text-primary transition-colors">清除</a>"#
+        format!(
+            r#"<a href="/?page_size={}" class="text-[10px] text-muted-foreground hover:text-primary transition-colors">清除</a>"#,
+            page_size
+        )
     } else {
-        ""
+        String::new()
     };
 
     let items: Vec<String> = tags.iter().map(|tag| {
@@ -491,14 +515,14 @@ fn render_tag_sidebar(tags: &[TagSidebarItem], tag_filter: &str) -> String {
             "background-color: var(--muted); color: var(--muted-foreground);".to_string()
         };
 
-        format!(r#"<a href="/?tag={}" class="{}" style="{}" title="{}">
+        format!(r#"<a href="/?tag={}&page_size={}" class="{}" style="{}" title="{}">
                 <span class="flex items-center gap-2 min-w-0 flex-1">
                     <span class="inline-block h-1.5 w-1.5 rounded-full flex-shrink-0 shadow-sm" style="background-color: {};"></span>
                     <span class="truncate relative top-[0.5px]">{}</span>
                 </span>
                 <span class="flex-shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-bold transition-colors group-hover:bg-background/80" style="{}">{}</span>
             </a>"#,
-            tag.id, classes, style, escape_attribute(&tag.name), tag.color, escape_html(&tag.name), count_style, tag.message_count
+            tag.id, page_size, classes, style, escape_attribute(&tag.name), tag.color, escape_html(&tag.name), count_style, tag.message_count
         )
     }).collect();
 
@@ -527,6 +551,7 @@ fn render_tag_sidebar(tags: &[TagSidebarItem], tag_filter: &str) -> String {
 fn render_messages(
     messages: &[MessageView],
     current_page: i64,
+    page_size: i64,
     search_term: &str,
     tag_filter: &str,
 ) -> String {
@@ -570,7 +595,7 @@ fn render_messages(
 
     messages
         .iter()
-        .map(|msg| render_message_item(msg, current_page, search_term, tag_filter))
+        .map(|msg| render_message_item(msg, current_page, page_size, search_term, tag_filter))
         .collect::<Vec<_>>()
         .join("")
 }
@@ -578,16 +603,17 @@ fn render_messages(
 fn render_message_item(
     msg: &MessageView,
     current_page: i64,
+    page_size: i64,
     search_term: &str,
     tag_filter: &str,
 ) -> String {
     let tags_html = if !msg.tags.is_empty() {
         let tags: Vec<String> = msg.tags.iter().map(|tag| {
-            format!(r#"<a href="/?tag={}" class="tag-item group inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium transition-all hover:brightness-105 hover:shadow-sm active:scale-95" style="background-color: {}15; color: {};">
+            format!(r#"<a href="/?tag={}&page_size={}" class="tag-item group inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium transition-all hover:brightness-105 hover:shadow-sm active:scale-95" style="background-color: {}15; color: {};">
                     <span class="opacity-40 transition-opacity group-hover:opacity-60">#</span>
                     {}
                 </a>"#,
-                tag.id, tag.color, tag.color, escape_html(&tag.name)
+                tag.id, page_size, tag.color, tag.color, escape_html(&tag.name)
             )
         }).collect();
         format!(
@@ -615,6 +641,7 @@ fn render_message_item(
     } else {
         String::new()
     };
+    let page_size_hidden = format!(r#"<input type="hidden" name="page_size" value="{}">"#, page_size);
 
     let id_str = msg.id.to_string();
     let id_suffix = if id_str.len() > 2 {
@@ -624,7 +651,7 @@ fn render_message_item(
     };
 
     let replies_html =
-        render_replies_section(&msg.replies, msg.id, current_page, search_term, tag_filter);
+        render_replies_section(&msg.replies, msg.id, current_page, page_size, search_term, tag_filter);
 
     format!(
         r#"<li class="message-item glass-card-hover group/reply rounded-xl text-card-foreground" data-message-id="{}">
@@ -651,6 +678,7 @@ fn render_message_item(
                     <input type="hidden" name="page" value="{}">
                     {}
                     {}
+                    {}
                     <button type="submit" class="inline-flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 transition-all active:scale-90 opacity-0 group-hover/reply:opacity-100 focus:opacity-100">
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
                     </button>
@@ -670,6 +698,7 @@ fn render_message_item(
         tags_html,
         msg.id,
         current_page,
+        page_size_hidden,
         search_hidden,
         tag_hidden,
         replies_html
@@ -680,6 +709,7 @@ fn render_replies_section(
     replies: &[ReplyView],
     message_id: i64,
     current_page: i64,
+    page_size: i64,
     search_term: &str,
     tag_filter: &str,
 ) -> String {
@@ -700,6 +730,7 @@ fn render_replies_section(
     } else {
         String::new()
     };
+    let page_size_hidden = format!(r#"<input type="hidden" name="page_size" value="{}">"#, page_size);
 
     let replies_list = if !replies.is_empty() {
         let items: Vec<String> = replies.iter().map(|reply| {
@@ -720,6 +751,7 @@ fn render_replies_section(
                         <input type="hidden" name="page" value="{}">
                         {}
                         {}
+                        {}
                         <button type="submit" class="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition">
                             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
                         </button>
@@ -734,6 +766,7 @@ fn render_replies_section(
                 escape_html(&reply.content),
                 reply.id,
                 current_page,
+                page_size_hidden,
                 search_hidden,
                 tag_hidden
             )
@@ -770,6 +803,7 @@ fn render_replies_section(
                     <input type="hidden" name="page" value="{}">
                     {}
                     {}
+                    {}
                     <div class="flex gap-2">
                         <textarea name="content" rows="2" required placeholder="输入答复内容..." class="flex-1 rounded-lg border border-input bg-background px-3 py-2 text-xs leading-5 text-foreground shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/40 resize-none"></textarea>
                         <div class="flex flex-col gap-1">
@@ -791,6 +825,7 @@ fn render_replies_section(
         message_id,
         message_id,
         current_page,
+        page_size_hidden,
         search_hidden,
         tag_hidden
     )
@@ -798,6 +833,7 @@ fn render_replies_section(
 
 fn render_pagination(
     current_page: i64,
+    page_size: i64,
     total_pages: i64,
     search_term: &str,
     tag_filter: &str,
@@ -816,6 +852,7 @@ fn render_pagination(
     } else {
         String::new()
     };
+    let page_size_param = format!("&page_size={}", page_size);
 
     let page_numbers: Vec<String> = pages.iter().map(|p| {
         if p == "..." {
@@ -824,8 +861,8 @@ fn render_pagination(
             let page_num: i64 = p.parse().unwrap_or(1);
             let is_active = page_num == current_page;
             let active_class = if is_active { "bg-primary text-primary-foreground shadow hover:bg-primary/90" } else { "" };
-            format!(r#"<a href="/?page={}{}{}" class="inline-flex h-9 min-w-[2.25rem] items-center justify-center rounded-md border border-input px-3 text-xs font-medium transition hover:bg-accent hover:text-accent-foreground {}">{}</a>"#,
-                page_num, search_param, tag_param, active_class, p
+            format!(r#"<a href="/?page={}{}{}{}" class="inline-flex h-9 min-w-[2.25rem] items-center justify-center rounded-md border border-input px-3 text-xs font-medium transition hover:bg-accent hover:text-accent-foreground {}">{}</a>"#,
+                page_num, page_size_param, search_param, tag_param, active_class, p
             )
         }
     }).collect();
@@ -845,21 +882,48 @@ fn render_pagination(
         r#"<nav class="flex flex-col gap-3 rounded-xl border border-border bg-card/70 p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
             <div class="text-xs text-muted-foreground">第 {} / {} 页</div>
             <div class="flex flex-wrap items-center gap-2">
-                <a href="/?page={}{}{}" class="inline-flex h-9 min-w-[2.25rem] items-center justify-center rounded-md border border-input px-3 text-xs font-medium transition hover:bg-accent hover:text-accent-foreground {}">上一页</a>
+                <a href="/?page={}{}{}{}" class="inline-flex h-9 min-w-[2.25rem] items-center justify-center rounded-md border border-input px-3 text-xs font-medium transition hover:bg-accent hover:text-accent-foreground {}">上一页</a>
                 <div class="flex items-center gap-1">{}</div>
-                <a href="/?page={}{}{}" class="inline-flex h-9 min-w-[2.25rem] items-center justify-center rounded-md border border-input px-3 text-xs font-medium transition hover:bg-accent hover:text-accent-foreground {}">下一页</a>
+                <a href="/?page={}{}{}{}" class="inline-flex h-9 min-w-[2.25rem] items-center justify-center rounded-md border border-input px-3 text-xs font-medium transition hover:bg-accent hover:text-accent-foreground {}">下一页</a>
             </div>
         </nav>"#,
         current_page,
         total_pages,
         prev_page,
+        page_size_param,
         search_param,
         tag_param,
         prev_disabled,
         page_numbers.join(""),
         next_page,
+        page_size_param,
         search_param,
         tag_param,
         next_disabled
+    )
+}
+
+fn render_page_size_selector(current_page_size: i64) -> String {
+    let options = PAGE_SIZE_OPTIONS
+        .iter()
+        .map(|size| {
+            let selected = if *size == current_page_size {
+                " selected"
+            } else {
+                ""
+            };
+            format!(r#"<option value="{}"{}>{} / 页</option>"#, size, selected, size)
+        })
+        .collect::<Vec<_>>()
+        .join("");
+
+    format!(
+        r#"<label class="inline-flex items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-xs text-muted-foreground shadow-sm">
+            <span>显示</span>
+            <select name="page_size" class="bg-transparent text-foreground focus:outline-none">
+                {}
+            </select>
+        </label>"#,
+        options
     )
 }

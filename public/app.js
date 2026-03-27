@@ -536,27 +536,36 @@ function initializeMarkdownRendering() {
         });
     }
 
-    const blocks = document.querySelectorAll('[data-markdown]');
-    blocks.forEach((element) => {
-        const markdownText = element.getAttribute('data-markdown') || '';
-        if (window.marked) {
-            const rawHtml = marked.parse(markdownText);
-            const safeHtml = window.DOMPurify ? DOMPurify.sanitize(rawHtml) : rawHtml;
-            element.innerHTML = safeHtml;
-        } else {
-            element.textContent = markdownText;
-        }
-    });
-
-    if (window.hljs) {
-        const codeBlocks = document.querySelectorAll('.message-content pre code');
-        codeBlocks.forEach((block) => window.hljs.highlightElement(block));
-    }
-
-    enhanceCodeBlocks();
+    renderMarkdownElements(document);
 
     // 应用搜索高亮
     applySearchHighlight();
+}
+
+function renderMarkdownHtml(markdownText = '') {
+    if (!window.marked) {
+        return escapeHtmlClient(markdownText).replace(/\r?\n/g, '<br>');
+    }
+
+    const rawHtml = marked.parse(markdownText);
+    return window.DOMPurify ? DOMPurify.sanitize(rawHtml) : rawHtml;
+}
+
+function renderMarkdownElements(root = document, selector = '[data-markdown]') {
+    const scope = root && typeof root.querySelectorAll === 'function' ? root : document;
+    const blocks = scope.querySelectorAll(selector);
+
+    blocks.forEach((element) => {
+        const markdownText = element.getAttribute('data-markdown') || '';
+        element.innerHTML = renderMarkdownHtml(markdownText);
+    });
+
+    if (window.hljs) {
+        const codeBlocks = scope.querySelectorAll('[data-markdown] pre code');
+        codeBlocks.forEach((block) => window.hljs.highlightElement(block));
+    }
+
+    enhanceCodeBlocks(scope);
 }
 
 function fallbackCopy(text, onComplete) {
@@ -690,8 +699,9 @@ function showToast(message, type = 'default') {
     }, 3000);
 }
 
-function enhanceCodeBlocks() {
-    const blocks = document.querySelectorAll('.message-content pre');
+function enhanceCodeBlocks(root = document) {
+    const scope = root && typeof root.querySelectorAll === 'function' ? root : document;
+    const blocks = scope.querySelectorAll('[data-markdown] pre, #markdown-preview pre');
     blocks.forEach(wrapCodeBlock);
 }
 
@@ -734,19 +744,20 @@ function initializeAutoRefresh() {
                 return;
             }
 
-            const data = await response.json();
-            if (!data.messages || data.messages.length === 0) {
+            const payload = await response.json();
+            const messages = Array.isArray(payload) ? payload : payload.messages;
+            if (!Array.isArray(messages) || messages.length === 0) {
                 return;
             }
 
-            data.messages.forEach((msg) => {
+            messages.forEach((msg) => {
                 if (msg.id > latestId) {
                     latestId = msg.id;
                 }
                 insertNewMessage(msg, messageList, pageSize);
             });
 
-            updateStatsCounter(data.messages.length);
+            updateStatsCounter(messages.length);
         } catch (error) {
             console.error('Failed to poll new messages:', error);
         }
@@ -906,24 +917,7 @@ function insertNewMessage(message, listElement, pageSize = Number(document.body?
 
     listElement.insertBefore(li, listElement.firstChild);
 
-    const contentElement = li.querySelector('.message-content');
-    if (contentElement && window.marked) {
-        const rawHtml = marked.parse(message.content);
-        const safeHtml = window.DOMPurify ? DOMPurify.sanitize(rawHtml) : rawHtml;
-        contentElement.innerHTML = safeHtml;
-    }
-
-    if (window.hljs) {
-        const codeBlocks = contentElement.querySelectorAll('pre code');
-        codeBlocks.forEach((block) => window.hljs.highlightElement(block));
-    }
-
-    const preElements = contentElement.querySelectorAll('pre');
-    preElements.forEach((pre) => {
-        if (pre.dataset.enhanced !== 'true') {
-            enhanceCodeBlockSingle(pre);
-        }
-    });
+    renderMarkdownElements(li);
 
     // 应用响应式标签显示
     const tagsContainer = li.querySelector('.message-tags');
@@ -932,6 +926,7 @@ function insertNewMessage(message, listElement, pageSize = Number(document.body?
     }
 
     initializeReplyForms(li);
+    initializeCollapsibleContent(li);
     trimMessageList(listElement, pageSize);
 }
 
@@ -1294,22 +1289,7 @@ function initializeReplyForms(root = document) {
 function renderReplyMarkdown(root = document) {
     const scope = root && typeof root.querySelectorAll === 'function' ? root : document;
     const replyContents = scope.querySelectorAll('.reply-content[data-markdown]');
-    replyContents.forEach((element) => {
-        const markdownText = element.getAttribute('data-markdown') || '';
-        if (window.marked) {
-            const rawHtml = marked.parse(markdownText);
-            const safeHtml = window.DOMPurify ? DOMPurify.sanitize(rawHtml) : rawHtml;
-            element.innerHTML = safeHtml;
-        } else {
-            element.textContent = markdownText;
-        }
-    });
-
-    // 高亮代码块
-    if (window.hljs) {
-        const codeBlocks = scope.querySelectorAll('.reply-content pre code');
-        codeBlocks.forEach((block) => window.hljs.highlightElement(block));
-    }
+    renderMarkdownElements(scope, '.reply-content[data-markdown]');
 
     // 应用搜索高亮到答复内容
     const searchTerm = getSearchTerm();
@@ -1478,20 +1458,23 @@ function initializeRelativeTime() {
 /**
  * 初始化长内容折叠功能
  */
-function initializeCollapsibleContent() {
-    const MAX_HEIGHT = 200;
-    document.querySelectorAll('.message-content').forEach((content) => {
+function initializeCollapsibleContent(root = document) {
+    const scope = root && typeof root.querySelectorAll === 'function' ? root : document;
+    const COLLAPSED_HEIGHT = 220;
+    const EXPANDED_HEIGHT = 420;
+
+    scope.querySelectorAll('.message-content').forEach((content) => {
         if (content.dataset.collapsible === 'true') return;
 
         // Store original height before collapsing
         const originalHeight = content.scrollHeight;
-        if (originalHeight <= MAX_HEIGHT) return;
+        if (originalHeight <= COLLAPSED_HEIGHT) return;
 
         content.dataset.collapsible = 'true';
         content.dataset.originalHeight = originalHeight;
-        content.style.maxHeight = MAX_HEIGHT + 'px';
+        content.style.maxHeight = COLLAPSED_HEIGHT + 'px';
         content.style.overflow = 'hidden';
-        content.classList.add('relative');
+        content.classList.add('relative', 'message-scrollable', 'is-collapsed');
 
         const wrapper = document.createElement('div');
         wrapper.className = 'collapsible-wrapper relative';
@@ -1512,19 +1495,19 @@ function initializeCollapsibleContent() {
         btn.addEventListener('click', () => {
             const expanded = content.dataset.expanded === 'true';
             if (expanded) {
-                content.style.maxHeight = MAX_HEIGHT + 'px';
+                content.style.maxHeight = COLLAPSED_HEIGHT + 'px';
+                content.style.overflow = 'hidden';
                 content.dataset.expanded = 'false';
+                content.classList.remove('is-expanded');
+                content.classList.add('is-collapsed');
                 gradient.style.display = '';
                 btn.textContent = t('expandText');
             } else {
-                // Recalculate scrollHeight for accurate expansion (handles async content)
-                content.style.maxHeight = 'none';
-                const fullHeight = content.scrollHeight;
-                content.style.maxHeight = MAX_HEIGHT + 'px';
-                // Force reflow then animate
-                content.offsetHeight;
-                content.style.maxHeight = fullHeight + 'px';
+                content.style.maxHeight = EXPANDED_HEIGHT + 'px';
+                content.style.overflow = 'auto';
                 content.dataset.expanded = 'true';
+                content.classList.remove('is-collapsed');
+                content.classList.add('is-expanded');
                 gradient.style.display = 'none';
                 btn.textContent = t('collapseText');
             }
@@ -1578,13 +1561,20 @@ function initializeMarkdownPreview() {
 
     function updatePreview() {
         const text = textarea.value || '';
-        if (window.marked) {
-            const raw = marked.parse(text);
-            preview.innerHTML = window.DOMPurify ? DOMPurify.sanitize(raw) : raw;
-        } else {
-            preview.textContent = text;
+        preview.innerHTML = renderMarkdownHtml(text);
+        enhanceCodeBlocks(preview);
+        if (window.hljs) {
+            const codeBlocks = preview.querySelectorAll('pre code');
+            codeBlocks.forEach((block) => window.hljs.highlightElement(block));
         }
     }
+
+    textarea.addEventListener('input', () => {
+        const previewTab = tabs.querySelector('[data-tab="preview"]');
+        if (previewTab?.classList.contains('active')) {
+            updatePreview();
+        }
+    });
 }
 
 /**

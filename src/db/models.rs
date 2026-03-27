@@ -73,6 +73,23 @@ pub struct DailyStat {
     pub reply_count: i64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DailyIpStat {
+    pub date: String,
+    pub source_ip: String,
+    pub message_count: i64,
+}
+
+impl sqlx::FromRow<'_, sqlx::sqlite::SqliteRow> for DailyIpStat {
+    fn from_row(row: &sqlx::sqlite::SqliteRow) -> Result<Self, sqlx::Error> {
+        Ok(DailyIpStat {
+            date: row.try_get("date")?,
+            source_ip: row.try_get("source_ip")?,
+            message_count: row.try_get("message_count")?,
+        })
+    }
+}
+
 impl sqlx::FromRow<'_, sqlx::sqlite::SqliteRow> for DailyStat {
     fn from_row(row: &sqlx::sqlite::SqliteRow) -> Result<Self, sqlx::Error> {
         Ok(DailyStat {

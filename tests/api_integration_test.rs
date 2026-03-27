@@ -574,6 +574,40 @@ async fn test_dashboard_page_with_data() {
 
     // 验证统计数据
     assert!(html.contains("2")); // 当前留言数
+    assert!(html.contains("来源 IP 每日统计"));
+    assert!(html.contains("运行监控"));
+}
+
+/// 测试首页支持自定义每页显示数量
+#[actix_rt::test]
+async fn test_home_page_size_selection() {
+    let repo = create_test_repo().await;
+    let created_at = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+
+    for i in 0..45 {
+        repo.create_message(&format!("Message {}", i), &created_at)
+            .await
+            .unwrap();
+    }
+
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(repo))
+            .route("/", web::get().to(home)),
+    )
+    .await;
+
+    let req = test::TestRequest::get()
+        .uri("/?page_size=40")
+        .to_request();
+
+    let resp = test::call_service(&app, req).await;
+    assert!(resp.status().is_success());
+
+    let body = test::read_body(resp).await;
+    let html = String::from_utf8(body.to_vec()).unwrap();
+    assert!(html.contains("data-page-size=\"40\""));
+    assert!(html.contains("<option value=\"40\" selected>40 / 页</option>"));
 }
 
 // ==================== 边界条件测试 ====================

@@ -1,5 +1,7 @@
 use chrono::{DateTime, Local, Utc};
 
+use crate::config::PAGE_SIZE;
+
 pub fn escape_html(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -79,4 +81,37 @@ pub fn now_iso() -> String {
 
 pub fn today_date() -> String {
     Local::now().format("%Y-%m-%d").to_string()
+}
+
+pub fn normalize_page_size(value: Option<i64>) -> i64 {
+    match value.unwrap_or(PAGE_SIZE) {
+        40 => 40,
+        60 => 60,
+        _ => PAGE_SIZE,
+    }
+}
+
+pub fn extract_client_ip(raw: Option<&str>) -> String {
+    let Some(raw) = raw.map(str::trim).filter(|value| !value.is_empty()) else {
+        return "unknown".to_string();
+    };
+
+    let candidate = raw.split(',').next().unwrap_or(raw).trim();
+
+    if let Some(stripped) = candidate
+        .strip_prefix('[')
+        .and_then(|value| value.split(']').next())
+    {
+        return stripped.to_string();
+    }
+
+    if candidate.matches(':').count() == 1 {
+        if let Some((host, port)) = candidate.rsplit_once(':') {
+            if port.chars().all(|ch| ch.is_ascii_digit()) {
+                return host.to_string();
+            }
+        }
+    }
+
+    candidate.to_string()
 }

@@ -420,6 +420,51 @@ async fn test_daily_stats() {
     assert_eq!(stats[0].reply_count, 1);
 }
 
+/// 测试每日来源 IP 统计
+#[actix_rt::test]
+async fn test_daily_ip_stats() {
+    let repo = create_test_repo().await;
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+
+    repo.update_daily_ip_stats(&today, "127.0.0.1").await.unwrap();
+    repo.update_daily_ip_stats(&today, "127.0.0.1").await.unwrap();
+    repo.update_daily_ip_stats(&today, "192.168.1.8").await.unwrap();
+
+    let stats = repo.get_daily_ip_stats(10).await.unwrap();
+    assert_eq!(stats.len(), 2);
+    assert_eq!(stats[0].date, today);
+    assert_eq!(stats[0].source_ip, "127.0.0.1");
+    assert_eq!(stats[0].message_count, 2);
+}
+
+/// 测试唯一来源 IP 统计
+#[actix_rt::test]
+async fn test_unique_source_ip_count() {
+    let repo = create_test_repo().await;
+    let created_at = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+
+    repo.create_message_with_ip("One", &created_at, "127.0.0.1")
+        .await
+        .unwrap();
+    repo.create_message_with_ip("Two", &created_at, "127.0.0.1")
+        .await
+        .unwrap();
+    repo.create_message_with_ip("Three", &created_at, "10.0.0.2")
+        .await
+        .unwrap();
+
+    let count = repo.get_unique_source_ip_count().await.unwrap();
+    assert_eq!(count, 2);
+}
+
+/// 测试数据库大小统计
+#[actix_rt::test]
+async fn test_database_size_bytes() {
+    let repo = create_test_repo().await;
+    let size = repo.get_database_size_bytes().await.unwrap();
+    assert!(size > 0);
+}
+
 /// 测试清理旧留言
 #[actix_rt::test]
 async fn test_cleanup_old_messages() {

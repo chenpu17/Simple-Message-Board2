@@ -5,7 +5,7 @@ mod home;
 use crate::config::{MAX_MESSAGES, MAX_MESSAGE_LENGTH, MAX_REPLY_LENGTH, MAX_TAG_NAME_LENGTH};
 use crate::db::Repository;
 use crate::utils::*;
-use actix_web::{web, HttpResponse};
+use actix_web::{web, HttpRequest, HttpResponse};
 use serde::Deserialize;
 use tracing::{error, warn};
 
@@ -23,6 +23,7 @@ pub struct SubmitForm {
 pub struct DeleteForm {
     id: i64,
     page: Option<i64>,
+    page_size: Option<i64>,
     q: Option<String>,
     tag: Option<String>,
 }
@@ -32,6 +33,7 @@ pub struct ReplyForm {
     message_id: i64,
     content: String,
     page: Option<i64>,
+    page_size: Option<i64>,
     q: Option<String>,
     tag: Option<String>,
 }
@@ -40,16 +42,26 @@ pub struct ReplyForm {
 pub struct DeleteReplyForm {
     id: i64,
     page: Option<i64>,
+    page_size: Option<i64>,
     q: Option<String>,
     tag: Option<String>,
 }
 
-fn build_redirect_path(page: Option<i64>, q: Option<&str>, tag: Option<&str>) -> String {
+fn build_redirect_path(
+    page: Option<i64>,
+    page_size: Option<i64>,
+    q: Option<&str>,
+    tag: Option<&str>,
+) -> String {
     let page = page.unwrap_or(1);
+    let page_size = normalize_page_size(page_size);
     let mut params = Vec::new();
 
     if page > 1 {
         params.push(format!("page={}", page));
+    }
+    if page_size != crate::config::PAGE_SIZE {
+        params.push(format!("page_size={}", page_size));
     }
     if let Some(search) = q {
         if !search.is_empty() {
@@ -71,6 +83,7 @@ fn build_redirect_path(page: Option<i64>, q: Option<&str>, tag: Option<&str>) ->
 
 pub async fn submit_message(
     repo: web::Data<Repository>,
+    request: HttpRequest,
     form: web::Form<SubmitForm>,
 ) -> HttpResponse {
     let content = form.message.trim();
@@ -90,9 +103,13 @@ pub async fn submit_message(
     }
 
     let created_at = now_iso();
+    let source_ip = extract_client_ip(request.connection_info().realip_remote_addr());
 
     // 创建留言
-    let message_id = match repo.create_message(content, &created_at).await {
+    let message_id = match repo
+        .create_message_with_ip(content, &created_at, &source_ip)
+        .await
+    {
         Ok(id) => id,
         Err(e) => {
             error!("Failed to create message: {}", e);
@@ -106,6 +123,9 @@ pub async fn submit_message(
     }
     if let Err(e) = repo.update_daily_stats(&today_date(), true).await {
         warn!("Failed to update daily stats: {}", e);
+    }
+    if let Err(e) = repo.update_daily_ip_stats(&today_date(), &source_ip).await {
+        warn!("Failed to update daily IP stats: {}", e);
     }
 
     // 处理标签
@@ -135,7 +155,7 @@ pub async fn submit_message(
     }
 
     HttpResponse::Found()
-        .insert_header(("Location", "/"))
+        .insert_header(("Location", "/?submitted=1"))
         .finish()
 }
 
@@ -147,7 +167,12 @@ pub async fn delete_message(
         warn!("Failed to delete message {}: {}", form.id, e);
     }
 
-    let redirect = build_redirect_path(form.page, form.q.as_deref(), form.tag.as_deref());
+    let redirect = build_redirect_path(
+        form.page,
+        form.page_size,
+        form.q.as_deref(),
+        form.tag.as_deref(),
+    );
     HttpResponse::Found()
         .insert_header(("Location", redirect))
         .finish()
@@ -158,7 +183,12 @@ pub async fn submit_reply(repo: web::Data<Repository>, form: web::Form<ReplyForm
 
     // 输入验证：检查内容是否为空
     if content.is_empty() {
-        let redirect = build_redirect_path(form.page, form.q.as_deref(), form.tag.as_deref());
+        let redirect = build_redirect_path(
+            form.page,
+            form.page_size,
+            form.q.as_deref(),
+            form.tag.as_deref(),
+        );
         return HttpResponse::Found()
             .insert_header(("Location", redirect))
             .finish();
@@ -166,7 +196,12 @@ pub async fn submit_reply(repo: web::Data<Repository>, form: web::Form<ReplyForm
 
     // 输入验证：检查内容长度（按Unicode字符计数）
     if content.chars().count() > MAX_REPLY_LENGTH {
-        let redirect = build_redirect_path(form.page, form.q.as_deref(), form.tag.as_deref());
+        let redirect = build_redirect_path(
+            form.page,
+            form.page_size,
+            form.q.as_deref(),
+            form.tag.as_deref(),
+        );
         return HttpResponse::Found()
             .insert_header(("Location", redirect))
             .finish();
@@ -184,7 +219,12 @@ pub async fn submit_reply(repo: web::Data<Repository>, form: web::Form<ReplyForm
         }
     }
 
-    let redirect = build_redirect_path(form.page, form.q.as_deref(), form.tag.as_deref());
+    let redirect = build_redirect_path(
+        form.page,
+        form.page_size,
+        form.q.as_deref(),
+        form.tag.as_deref(),
+    );
     HttpResponse::Found()
         .insert_header(("Location", redirect))
         .finish()
@@ -198,7 +238,12 @@ pub async fn delete_reply(
         warn!("Failed to delete reply {}: {}", form.id, e);
     }
 
-    let redirect = build_redirect_path(form.page, form.q.as_deref(), form.tag.as_deref());
+    let redirect = build_redirect_path(
+        form.page,
+        form.page_size,
+        form.q.as_deref(),
+        form.tag.as_deref(),
+    );
     HttpResponse::Found()
         .insert_header(("Location", redirect))
         .finish()

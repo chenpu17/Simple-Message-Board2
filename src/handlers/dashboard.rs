@@ -2,6 +2,7 @@ use crate::config::VERSION;
 use crate::db::Repository;
 use crate::utils::*;
 use actix_web::{web, HttpResponse};
+use std::process::Command;
 
 struct TagRankingItem {
     name: String,
@@ -15,6 +16,18 @@ struct TopMessageItem {
     reply_count: i64,
 }
 
+struct DailyIpStatItem {
+    date: String,
+    source_ip: String,
+    message_count: i64,
+}
+
+struct RuntimeMetricItem {
+    label: &'static str,
+    value: String,
+    hint: &'static str,
+}
+
 /// UTF-8 安全的字符串截断
 fn truncate_utf8(s: &str, max_chars: usize) -> String {
     if s.chars().count() <= max_chars {
@@ -24,11 +37,70 @@ fn truncate_utf8(s: &str, max_chars: usize) -> String {
     }
 }
 
+fn format_bytes(bytes: i64) -> String {
+    const KB: f64 = 1024.0;
+    const MB: f64 = KB * 1024.0;
+    const GB: f64 = MB * 1024.0;
+
+    let value = bytes.max(0) as f64;
+    if value >= GB {
+        format!("{:.2} GB", value / GB)
+    } else if value >= MB {
+        format!("{:.2} MB", value / MB)
+    } else if value >= KB {
+        format!("{:.2} KB", value / KB)
+    } else {
+        format!("{} B", bytes.max(0))
+    }
+}
+
+#[cfg(unix)]
+fn get_process_usage() -> (String, String) {
+    let pid = std::process::id().to_string();
+    let output = Command::new("ps")
+        .args(["-o", "%cpu=", "-o", "rss=", "-p", &pid])
+        .output();
+
+    let Ok(output) = output else {
+        return ("N/A".to_string(), "N/A".to_string());
+    };
+
+    if !output.status.success() {
+        return ("N/A".to_string(), "N/A".to_string());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parts: Vec<&str> = stdout.split_whitespace().collect();
+    if parts.len() < 2 {
+        return ("N/A".to_string(), "N/A".to_string());
+    }
+
+    let cpu = parts[0]
+        .parse::<f64>()
+        .map(|value| format!("{value:.1}%"))
+        .unwrap_or_else(|_| "N/A".to_string());
+    let memory = parts[1]
+        .parse::<i64>()
+        .map(|rss_kb| format_bytes(rss_kb.saturating_mul(1024)))
+        .unwrap_or_else(|_| "N/A".to_string());
+
+    (cpu, memory)
+}
+
+#[cfg(not(unix))]
+fn get_process_usage() -> (String, String) {
+    ("N/A".to_string(), "N/A".to_string())
+}
+
 pub async fn dashboard(repo: web::Data<Repository>) -> HttpResponse {
     // 获取统计数据
     let total_messages_ever = repo.get_stat("total_messages_ever").await.unwrap_or(0);
     let current_message_count = repo.count_messages().await.unwrap_or(0);
     let current_reply_count = repo.get_total_replies().await.unwrap_or(0);
+    let unique_source_ip_count = repo.get_unique_source_ip_count().await.unwrap_or(0);
+    let database_size_bytes = repo.get_database_size_bytes().await.unwrap_or(0);
+    let pid = std::process::id();
+    let (cpu_usage, memory_usage) = get_process_usage();
 
     // 获取真实的平均留言长度
     let avg_message_length = repo.get_average_message_length().await.unwrap_or(0.0) as i64;
@@ -83,12 +155,50 @@ pub async fn dashboard(repo: web::Data<Repository>) -> HttpResponse {
         })
         .collect();
 
+    let daily_ip_stats: Vec<DailyIpStatItem> = repo
+        .get_daily_ip_stats(20)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|item| DailyIpStatItem {
+            date: item.date,
+            source_ip: item.source_ip,
+            message_count: item.message_count,
+        })
+        .collect();
+
+    let runtime_metrics = vec![
+        RuntimeMetricItem {
+            label: "CPU 利用率",
+            value: cpu_usage,
+            hint: "当前后端进程瞬时占用",
+        },
+        RuntimeMetricItem {
+            label: "内存占用",
+            value: memory_usage,
+            hint: "当前进程 RSS 常驻内存",
+        },
+        RuntimeMetricItem {
+            label: "数据库大小",
+            value: format_bytes(database_size_bytes),
+            hint: "SQLite 已分配页大小",
+        },
+        RuntimeMetricItem {
+            label: "进程 PID",
+            value: pid.to_string(),
+            hint: "当前 dashboard 所属后端进程",
+        },
+    ];
+
     let html = render_dashboard(
         total_messages_ever,
         current_message_count,
         current_reply_count,
         avg_message_length,
+        unique_source_ip_count,
         &tag_ranking,
+        &daily_ip_stats,
+        &runtime_metrics,
         &daily_labels,
         &daily_message_data,
         &daily_reply_data,
@@ -107,7 +217,10 @@ fn render_dashboard(
     current_message_count: i64,
     current_reply_count: i64,
     avg_message_length: i64,
+    unique_source_ip_count: i64,
     tag_ranking: &[TagRankingItem],
+    daily_ip_stats: &[DailyIpStatItem],
+    runtime_metrics: &[RuntimeMetricItem],
     daily_labels: &[String],
     daily_message_data: &[i64],
     daily_reply_data: &[i64],
@@ -116,6 +229,8 @@ fn render_dashboard(
 ) -> String {
     let tag_ranking_html = render_tag_ranking(tag_ranking);
     let top_messages_html = render_top_messages(top_messages);
+    let daily_ip_stats_html = render_daily_ip_stats(daily_ip_stats, unique_source_ip_count);
+    let runtime_metrics_html = render_runtime_metrics(runtime_metrics);
 
     format!(
         r#"<!DOCTYPE html>
@@ -255,6 +370,8 @@ fn render_dashboard(
 
                 {}
                 {}
+                {}
+                {}
             </div>
         </main>
     </div>
@@ -382,6 +499,8 @@ fn render_dashboard(
             "text-violet-500",
             r#"<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7V4h16v3"/><path d="M9 20h6"/><path d="M12 4v16"/></svg>"#
         ),
+        runtime_metrics_html,
+        daily_ip_stats_html,
         tag_ranking_html,
         top_messages_html,
         serde_json::to_string(daily_labels).unwrap_or_else(|_| "[]".to_string()),
@@ -489,5 +608,108 @@ fn render_top_messages(messages: &[TopMessageItem]) -> String {
         </section>"#,
         messages.len(),
         items.join("")
+    )
+}
+
+fn render_daily_ip_stats(stats: &[DailyIpStatItem], unique_source_ip_count: i64) -> String {
+    if stats.is_empty() {
+        return format!(
+            r#"<section class="rounded-xl border border-border bg-card/90 p-5 shadow-sm backdrop-blur">
+            <div class="flex items-center justify-between gap-3 mb-4">
+                <div>
+                    <h3 class="text-sm font-semibold flex items-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-primary"><path d="M12 2v20"/><path d="M2 12h20"/><path d="M4.93 4.93a10 10 0 0 1 14.14 14.14"/><path d="M19.07 4.93A10 10 0 0 0 4.93 19.07"/></svg>
+                        <span>来源 IP 每日统计</span>
+                    </h3>
+                    <p class="mt-1 text-xs text-muted-foreground">已记录唯一 IP：{}</p>
+                </div>
+            </div>
+            <p class="text-sm text-muted-foreground">暂无来源 IP 统计数据</p>
+        </section>"#,
+            unique_source_ip_count
+        );
+    }
+
+    let rows = stats
+        .iter()
+        .map(|item| {
+            format!(
+                r#"<tr class="border-t border-border/60">
+                    <td class="px-3 py-2 text-xs text-muted-foreground">{}</td>
+                    <td class="px-3 py-2 text-sm font-medium text-foreground">{}</td>
+                    <td class="px-3 py-2 text-right text-sm text-foreground">{}</td>
+                </tr>"#,
+                escape_html(&item.date),
+                escape_html(&item.source_ip),
+                item.message_count
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("");
+
+    format!(
+        r#"<section class="rounded-xl border border-border bg-card/90 p-5 shadow-sm backdrop-blur">
+            <div class="flex items-center justify-between gap-3 mb-4">
+                <div>
+                    <h3 class="text-sm font-semibold flex items-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-primary"><path d="M12 2v20"/><path d="M2 12h20"/><path d="M4.93 4.93a10 10 0 0 1 14.14 14.14"/><path d="M19.07 4.93A10 10 0 0 0 4.93 19.07"/></svg>
+                        <span>来源 IP 每日统计</span>
+                    </h3>
+                    <p class="mt-1 text-xs text-muted-foreground">最近 20 条按日期/IP 聚合记录，已记录唯一 IP：{}</p>
+                </div>
+                <div class="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">{}</div>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="min-w-full border-separate border-spacing-0 overflow-hidden rounded-lg border border-border/60">
+                    <thead class="bg-muted/40">
+                        <tr>
+                            <th class="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">日期</th>
+                            <th class="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">来源 IP</th>
+                            <th class="px-3 py-2 text-right text-xs font-semibold text-muted-foreground">留言数</th>
+                        </tr>
+                    </thead>
+                    <tbody>{}</tbody>
+                </table>
+            </div>
+        </section>"#,
+        unique_source_ip_count,
+        format!("{} 个唯一 IP", unique_source_ip_count),
+        rows
+    )
+}
+
+fn render_runtime_metrics(metrics: &[RuntimeMetricItem]) -> String {
+    if metrics.is_empty() {
+        return String::new();
+    }
+
+    let items = metrics
+        .iter()
+        .map(|metric| {
+            format!(
+                r#"<div class="rounded-xl border border-border/70 bg-muted/20 p-4">
+                    <p class="text-xs font-medium text-muted-foreground">{}</p>
+                    <p class="mt-2 text-xl font-semibold tracking-tight">{}</p>
+                    <p class="mt-1 text-xs text-muted-foreground">{}</p>
+                </div>"#,
+                metric.label,
+                escape_html(&metric.value),
+                metric.hint
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("");
+
+    format!(
+        r#"<section class="rounded-xl border border-border bg-card/90 p-5 shadow-sm backdrop-blur">
+            <h3 class="text-sm font-semibold mb-4 flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-primary"><path d="M22 12h-4"/><path d="M6 12H2"/><path d="M12 6V2"/><path d="M12 22v-4"/><path d="m17 7-2.5 2.5"/><path d="M9.5 14.5 7 17"/><path d="m17 17-2.5-2.5"/><path d="M9.5 9.5 7 7"/><circle cx="12" cy="12" r="3"/></svg>
+                <span>运行监控</span>
+            </h3>
+            <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                {}
+            </div>
+        </section>"#,
+        items
     )
 }

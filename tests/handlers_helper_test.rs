@@ -6,12 +6,29 @@
 
 /// 模拟 build_redirect_path 函数
 /// 来自 src/handlers/mod.rs
-fn build_redirect_path(page: Option<i64>, q: Option<&str>, tag: Option<&str>) -> String {
+fn normalize_page_size(value: Option<i64>) -> i64 {
+    match value.unwrap_or(20) {
+        40 => 40,
+        60 => 60,
+        _ => 20,
+    }
+}
+
+fn build_redirect_path(
+    page: Option<i64>,
+    page_size: Option<i64>,
+    q: Option<&str>,
+    tag: Option<&str>,
+) -> String {
     let page = page.unwrap_or(1);
+    let page_size = normalize_page_size(page_size);
     let mut params = Vec::new();
 
     if page > 1 {
         params.push(format!("page={}", page));
+    }
+    if page_size != 20 {
+        params.push(format!("page_size={}", page_size));
     }
     if let Some(search) = q {
         if !search.is_empty() {
@@ -34,36 +51,36 @@ fn build_redirect_path(page: Option<i64>, q: Option<&str>, tag: Option<&str>) ->
 #[test]
 fn test_build_redirect_path_no_params() {
     // 无参数，返回根路径
-    assert_eq!(build_redirect_path(None, None, None), "/");
-    assert_eq!(build_redirect_path(Some(1), None, None), "/");
+    assert_eq!(build_redirect_path(None, None, None, None), "/");
+    assert_eq!(build_redirect_path(Some(1), None, None, None), "/");
 }
 
 #[test]
 fn test_build_redirect_path_with_page() {
     // 只有分页参数
-    assert_eq!(build_redirect_path(Some(2), None, None), "/?page=2");
-    assert_eq!(build_redirect_path(Some(10), None, None), "/?page=10");
+    assert_eq!(build_redirect_path(Some(2), None, None, None), "/?page=2");
+    assert_eq!(build_redirect_path(Some(10), None, None, None), "/?page=10");
 }
 
 #[test]
 fn test_build_redirect_path_with_search() {
     // 只有搜索参数
-    assert_eq!(build_redirect_path(None, Some("test"), None), "/?q=test");
-    assert_eq!(build_redirect_path(Some(1), Some("test"), None), "/?q=test");
+    assert_eq!(build_redirect_path(None, None, Some("test"), None), "/?q=test");
+    assert_eq!(build_redirect_path(Some(1), None, Some("test"), None), "/?q=test");
 }
 
 #[test]
 fn test_build_redirect_path_with_tag() {
     // 只有标签参数
-    assert_eq!(build_redirect_path(None, None, Some("1")), "/?tag=1");
-    assert_eq!(build_redirect_path(Some(1), None, Some("5")), "/?tag=5");
+    assert_eq!(build_redirect_path(None, None, None, Some("1")), "/?tag=1");
+    assert_eq!(build_redirect_path(Some(1), None, None, Some("5")), "/?tag=5");
 }
 
 #[test]
 fn test_build_redirect_path_with_all_params() {
     // 所有参数
     assert_eq!(
-        build_redirect_path(Some(2), Some("test"), Some("1")),
+        build_redirect_path(Some(2), None, Some("test"), Some("1")),
         "/?page=2&q=test&tag=1"
     );
 }
@@ -71,29 +88,38 @@ fn test_build_redirect_path_with_all_params() {
 #[test]
 fn test_build_redirect_path_empty_strings() {
     // 空字符串应该被忽略
-    assert_eq!(build_redirect_path(None, Some(""), None), "/");
-    assert_eq!(build_redirect_path(None, None, Some("")), "/");
-    assert_eq!(build_redirect_path(None, Some(""), Some("")), "/");
+    assert_eq!(build_redirect_path(None, None, Some(""), None), "/");
+    assert_eq!(build_redirect_path(None, None, None, Some("")), "/");
+    assert_eq!(build_redirect_path(None, None, Some(""), Some("")), "/");
 }
 
 #[test]
 fn test_build_redirect_path_special_characters() {
     // 特殊字符应该被 URL 编码
-    let result = build_redirect_path(None, Some("hello world"), None);
+    let result = build_redirect_path(None, None, Some("hello world"), None);
     assert!(result.contains("hello%20world") || result.contains("hello+world"));
 
-    let result = build_redirect_path(None, Some("测试"), None);
+    let result = build_redirect_path(None, None, Some("测试"), None);
     assert!(result.contains("%"));
 }
 
 #[test]
 fn test_build_redirect_path_large_page() {
     // 大数值页码
-    assert_eq!(build_redirect_path(Some(1000), None, None), "/?page=1000");
+    assert_eq!(build_redirect_path(Some(1000), None, None, None), "/?page=1000");
     assert_eq!(
-        build_redirect_path(Some(i64::MAX), None, None),
+        build_redirect_path(Some(i64::MAX), None, None, None),
         format!("/?page={}", i64::MAX)
     );
+}
+
+#[test]
+fn test_build_redirect_path_with_page_size() {
+    assert_eq!(
+        build_redirect_path(Some(3), Some(40), Some("rust"), Some("9")),
+        "/?page=3&page_size=40&q=rust&tag=9"
+    );
+    assert_eq!(build_redirect_path(None, Some(60), None, None), "/?page_size=60");
 }
 
 // ==================== generate_pages 测试 ====================

@@ -35,10 +35,13 @@ impl Repository {
     async fn create_indexes(&self) -> Result<(), sqlx::Error> {
         let indexes = [
             "CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at)",
+            "CREATE INDEX IF NOT EXISTS idx_messages_source_ip ON messages(source_ip)",
             "CREATE INDEX IF NOT EXISTS idx_replies_message_id ON replies(message_id)",
             "CREATE INDEX IF NOT EXISTS idx_replies_created_at ON replies(created_at)",
             "CREATE INDEX IF NOT EXISTS idx_message_tags_tag_id ON message_tags(tag_id)",
             "CREATE INDEX IF NOT EXISTS idx_daily_stats_date ON daily_stats(date)",
+            "CREATE INDEX IF NOT EXISTS idx_daily_ip_stats_date ON daily_ip_stats(date)",
+            "CREATE INDEX IF NOT EXISTS idx_daily_ip_stats_source_ip ON daily_ip_stats(source_ip)",
         ];
 
         for idx in indexes {
@@ -53,12 +56,28 @@ impl Repository {
             CREATE TABLE IF NOT EXISTS messages (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 content TEXT NOT NULL,
-                created_at TEXT NOT NULL
+                created_at TEXT NOT NULL,
+                source_ip TEXT NOT NULL DEFAULT ''
             )
             "#,
         )
         .execute(&self.pool)
         .await?;
+
+        let message_columns = sqlx::query("PRAGMA table_info(messages)")
+            .fetch_all(&self.pool)
+            .await?;
+        let has_source_ip = message_columns.iter().any(|column| {
+            column
+                .try_get::<String, _>("name")
+                .map(|name| name == "source_ip")
+                .unwrap_or(false)
+        });
+        if !has_source_ip {
+            sqlx::query("ALTER TABLE messages ADD COLUMN source_ip TEXT NOT NULL DEFAULT ''")
+                .execute(&self.pool)
+                .await?;
+        }
 
         sqlx::query(
             r#"
@@ -123,21 +142,45 @@ impl Repository {
         .execute(&self.pool)
         .await?;
 
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS daily_ip_stats (
+                date TEXT NOT NULL,
+                source_ip TEXT NOT NULL,
+                message_count INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (date, source_ip)
+            )
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
         Ok(())
     }
 
     // Message operations
+    pub async fn create_message_with_ip(
+        &self,
+        content: &str,
+        created_at: &str,
+        source_ip: &str,
+    ) -> Result<i64, sqlx::Error> {
+        let result =
+            sqlx::query("INSERT INTO messages (content, created_at, source_ip) VALUES (?, ?, ?)")
+                .bind(content)
+                .bind(created_at)
+                .bind(source_ip)
+                .execute(&self.pool)
+                .await?;
+        Ok(result.last_insert_rowid())
+    }
+
     pub async fn create_message(
         &self,
         content: &str,
         created_at: &str,
     ) -> Result<i64, sqlx::Error> {
-        let result = sqlx::query("INSERT INTO messages (content, created_at) VALUES (?, ?)")
-            .bind(content)
-            .bind(created_at)
-            .execute(&self.pool)
-            .await?;
-        Ok(result.last_insert_rowid())
+        self.create_message_with_ip(content, created_at, "").await
     }
 
     pub async fn get_messages(
@@ -336,6 +379,57 @@ impl Repository {
             .await?;
         }
         Ok(())
+    }
+
+    pub async fn update_daily_ip_stats(
+        &self,
+        date: &str,
+        source_ip: &str,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            r#"
+            INSERT INTO daily_ip_stats (date, source_ip, message_count) VALUES (?, ?, 1)
+            ON CONFLICT(date, source_ip) DO UPDATE SET message_count = message_count + 1
+            "#,
+        )
+        .bind(date)
+        .bind(source_ip)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn get_daily_ip_stats(&self, limit: i64) -> Result<Vec<DailyIpStat>, sqlx::Error> {
+        sqlx::query_as::<_, DailyIpStat>(
+            r#"
+            SELECT date, source_ip, message_count
+            FROM daily_ip_stats
+            ORDER BY date DESC, message_count DESC, source_ip ASC
+            LIMIT ?
+            "#,
+        )
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await
+    }
+
+    pub async fn get_unique_source_ip_count(&self) -> Result<i64, sqlx::Error> {
+        let result: (i64,) = sqlx::query_as(
+            "SELECT COUNT(DISTINCT source_ip) FROM messages WHERE source_ip IS NOT NULL AND source_ip != ''",
+        )
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(result.0)
+    }
+
+    pub async fn get_database_size_bytes(&self) -> Result<i64, sqlx::Error> {
+        let page_count: (i64,) = sqlx::query_as("PRAGMA page_count")
+            .fetch_one(&self.pool)
+            .await?;
+        let page_size: (i64,) = sqlx::query_as("PRAGMA page_size")
+            .fetch_one(&self.pool)
+            .await?;
+        Ok(page_count.0.saturating_mul(page_size.0))
     }
 
     // Cleanup old messages

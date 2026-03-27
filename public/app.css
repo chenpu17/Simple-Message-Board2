@@ -22,6 +22,25 @@ body {
     animation: fadeIn 0.3s ease-out;
 }
 
+.message-scrollable {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148, 163, 184, 0.55) transparent;
+    transition: max-height 0.24s ease;
+}
+
+.message-scrollable::-webkit-scrollbar {
+    width: 8px;
+}
+
+.message-scrollable::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.45);
+    border-radius: 999px;
+}
+
+.message-scrollable.is-expanded {
+    padding-right: 0.35rem;
+}
+
 @keyframes fadeIn {
     from {
         opacity: 0;
