@@ -673,9 +673,7 @@ fn render_daily_ip_stats(stats: &[DailyIpStatItem], unique_source_ip_count: i64)
                 </table>
             </div>
         </section>"#,
-        unique_source_ip_count,
-        unique_ip_badge,
-        rows
+        unique_source_ip_count, unique_ip_badge, rows
     )
 }
 
