@@ -597,9 +597,7 @@ async fn test_home_page_size_selection() {
     )
     .await;
 
-    let req = test::TestRequest::get()
-        .uri("/?page_size=40")
-        .to_request();
+    let req = test::TestRequest::get().uri("/?page_size=40").to_request();
 
     let resp = test::call_service(&app, req).await;
     assert!(resp.status().is_success());

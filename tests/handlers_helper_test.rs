@@ -65,15 +65,24 @@ fn test_build_redirect_path_with_page() {
 #[test]
 fn test_build_redirect_path_with_search() {
     // 只有搜索参数
-    assert_eq!(build_redirect_path(None, None, Some("test"), None), "/?q=test");
-    assert_eq!(build_redirect_path(Some(1), None, Some("test"), None), "/?q=test");
+    assert_eq!(
+        build_redirect_path(None, None, Some("test"), None),
+        "/?q=test"
+    );
+    assert_eq!(
+        build_redirect_path(Some(1), None, Some("test"), None),
+        "/?q=test"
+    );
 }
 
 #[test]
 fn test_build_redirect_path_with_tag() {
     // 只有标签参数
     assert_eq!(build_redirect_path(None, None, None, Some("1")), "/?tag=1");
-    assert_eq!(build_redirect_path(Some(1), None, None, Some("5")), "/?tag=5");
+    assert_eq!(
+        build_redirect_path(Some(1), None, None, Some("5")),
+        "/?tag=5"
+    );
 }
 
 #[test]
@@ -106,7 +115,10 @@ fn test_build_redirect_path_special_characters() {
 #[test]
 fn test_build_redirect_path_large_page() {
     // 大数值页码
-    assert_eq!(build_redirect_path(Some(1000), None, None, None), "/?page=1000");
+    assert_eq!(
+        build_redirect_path(Some(1000), None, None, None),
+        "/?page=1000"
+    );
     assert_eq!(
         build_redirect_path(Some(i64::MAX), None, None, None),
         format!("/?page={}", i64::MAX)
@@ -119,7 +131,10 @@ fn test_build_redirect_path_with_page_size() {
         build_redirect_path(Some(3), Some(40), Some("rust"), Some("9")),
         "/?page=3&page_size=40&q=rust&tag=9"
     );
-    assert_eq!(build_redirect_path(None, Some(60), None, None), "/?page_size=60");
+    assert_eq!(
+        build_redirect_path(None, Some(60), None, None),
+        "/?page_size=60"
+    );
 }
 
 // ==================== generate_pages 测试 ====================

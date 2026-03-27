@@ -426,9 +426,15 @@ async fn test_daily_ip_stats() {
     let repo = create_test_repo().await;
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
 
-    repo.update_daily_ip_stats(&today, "127.0.0.1").await.unwrap();
-    repo.update_daily_ip_stats(&today, "127.0.0.1").await.unwrap();
-    repo.update_daily_ip_stats(&today, "192.168.1.8").await.unwrap();
+    repo.update_daily_ip_stats(&today, "127.0.0.1")
+        .await
+        .unwrap();
+    repo.update_daily_ip_stats(&today, "127.0.0.1")
+        .await
+        .unwrap();
+    repo.update_daily_ip_stats(&today, "192.168.1.8")
+        .await
+        .unwrap();
 
     let stats = repo.get_daily_ip_stats(10).await.unwrap();
     assert_eq!(stats.len(), 2);

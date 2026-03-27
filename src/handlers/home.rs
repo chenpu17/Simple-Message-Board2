@@ -226,7 +226,13 @@ fn render_home_page(
     let next_page = (current_page + 1).min(total_pages);
 
     let tag_sidebar_html = render_tag_sidebar(&all_tags, &tag_filter, page_size);
-    let messages_html = render_messages(&messages, current_page, page_size, &search_term, &tag_filter);
+    let messages_html = render_messages(
+        &messages,
+        current_page,
+        page_size,
+        &search_term,
+        &tag_filter,
+    );
     let pagination_html = if total_pages > 1 {
         render_pagination(
             current_page,
@@ -641,7 +647,10 @@ fn render_message_item(
     } else {
         String::new()
     };
-    let page_size_hidden = format!(r#"<input type="hidden" name="page_size" value="{}">"#, page_size);
+    let page_size_hidden = format!(
+        r#"<input type="hidden" name="page_size" value="{}">"#,
+        page_size
+    );
 
     let id_str = msg.id.to_string();
     let id_suffix = if id_str.len() > 2 {
@@ -650,8 +659,14 @@ fn render_message_item(
         &id_str
     };
 
-    let replies_html =
-        render_replies_section(&msg.replies, msg.id, current_page, page_size, search_term, tag_filter);
+    let replies_html = render_replies_section(
+        &msg.replies,
+        msg.id,
+        current_page,
+        page_size,
+        search_term,
+        tag_filter,
+    );
 
     format!(
         r#"<li class="message-item glass-card-hover group/reply rounded-xl text-card-foreground" data-message-id="{}">
@@ -730,7 +745,10 @@ fn render_replies_section(
     } else {
         String::new()
     };
-    let page_size_hidden = format!(r#"<input type="hidden" name="page_size" value="{}">"#, page_size);
+    let page_size_hidden = format!(
+        r#"<input type="hidden" name="page_size" value="{}">"#,
+        page_size
+    );
 
     let replies_list = if !replies.is_empty() {
         let items: Vec<String> = replies.iter().map(|reply| {
@@ -912,7 +930,10 @@ fn render_page_size_selector(current_page_size: i64) -> String {
             } else {
                 ""
             };
-            format!(r#"<option value="{}"{}>{} / 页</option>"#, size, selected, size)
+            format!(
+                r#"<option value="{}"{}>{} / 页</option>"#,
+                size, selected, size
+            )
         })
         .collect::<Vec<_>>()
         .join("");
